@@ -26,9 +26,38 @@ const propertySchema = new mongoose.Schema({
     enum: ['Sale', 'Rent', 'Lease'],
     required: true,
   },
+  // Gated community vs independent (Flat / Villa)
+  residenceStyle: {
+    type: String,
+    enum: ['Gated', 'Independent', ''],
+    default: '',
+  },
+  // Flat / Plot
+  facing: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  // Flat — carpet area (sqft); Commercial/Plot use areaSqft
+  carpetArea: {
+    type: Number,
+    default: null,
+  },
   bhk: {
     type: Number,
     default: null,
+  },
+  // Villa subtype
+  villaType: {
+    type: String,
+    enum: ['Duplex', 'Triplex', 'Independent House', ''],
+    default: '',
+  },
+  // Plot size text e.g. "200 sq yards"
+  plotSize: {
+    type: String,
+    default: '',
+    trim: true,
   },
   price: {
     type: Number,
@@ -50,7 +79,7 @@ const propertySchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'Available', 'Hold', 'Sold'],
+    enum: ['Draft', 'Available', 'Hold', 'Deal', 'Blocked', 'Sold'],
     default: 'Available',
   },
   notes: {
@@ -65,7 +94,7 @@ const propertySchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-  // Public HTTPS URLs (AWS S3) for owner listing photos
+  // Public HTTPS URLs (AWS S3)
   images: {
     type: [String],
     default: [],

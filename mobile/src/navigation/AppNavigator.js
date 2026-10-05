@@ -1,13 +1,14 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import AgentOnboardingScreen from '../screens/AgentOnboardingScreen';
-import InventoryScreen from '../screens/InventoryScreen';
+import PublisherPostsScreen from '../screens/PublisherPostsScreen';
 import PropertyFormScreen from '../screens/PropertyFormScreen';
 import AgentProfileScreen from '../screens/AgentProfileScreen';
 import RequirementsScreen from '../screens/RequirementsScreen';
@@ -18,28 +19,53 @@ import AgentDetailScreen from '../screens/AgentDetailScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import CustomerFormScreen from '../screens/CustomerFormScreen';
 import CustomerDetailScreen from '../screens/CustomerDetailScreen';
-import OwnerListingsScreen from '../screens/OwnerListingsScreen';
 import OwnerListingFormScreen from '../screens/OwnerListingFormScreen';
-import OwnerProfileScreen from '../screens/OwnerProfileScreen';
+import CustomerBrowseScreen from '../screens/CustomerBrowseScreen';
+import CustomerListingDetailScreen from '../screens/CustomerListingDetailScreen';
+import CustomerEnquiriesScreen from '../screens/CustomerEnquiriesScreen';
+import CustomerProfileScreen from '../screens/CustomerProfileScreen';
 import { colors } from '../constants/theme';
 
 const AuthStackNav = createNativeStackNavigator();
-const AgentStackNav = createNativeStackNavigator();
+const PublisherStackNav = createNativeStackNavigator();
 const AdminStackNav = createNativeStackNavigator();
-const OwnerStackNav = createNativeStackNavigator();
+const CustomerStackNav = createNativeStackNavigator();
 const OnboardingStackNav = createNativeStackNavigator();
-const AgentTab = createBottomTabNavigator();
+const PublisherTab = createBottomTabNavigator();
 const AdminTab = createBottomTabNavigator();
-const OwnerTab = createBottomTabNavigator();
+const CustomerTab = createBottomTabNavigator();
+
+const navTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.surface,
+    text: colors.text,
+    border: colors.border,
+  },
+};
 
 const tabScreenOptions = {
   headerShown: false,
   tabBarActiveTintColor: colors.primary,
   tabBarInactiveTintColor: colors.textMuted,
-  tabBarLabelStyle: { fontSize: 12, fontWeight: '700', marginBottom: 4 },
-  tabBarStyle: { height: 56, paddingTop: 4 },
-  tabBarIcon: () => null,
+  tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
 };
+
+const stackScreenOptions = {
+  headerStyle: { backgroundColor: colors.surface },
+  headerTintColor: colors.text,
+  headerTitleStyle: { fontWeight: '600', fontSize: 18 },
+  headerShadowVisible: false,
+  headerBackButtonDisplayMode: 'minimal',
+};
+
+// Filled icon when focused, outline otherwise
+const tabIcon = (name) => ({ focused, color, size }) => (
+  <Ionicons name={focused ? name : `${name}-outline`} size={size} color={color} />
+);
 
 function AuthStack() {
   return (
@@ -50,25 +76,25 @@ function AuthStack() {
   );
 }
 
-function AgentTabs() {
+function PublisherTabs() {
   return (
-    <AgentTab.Navigator screenOptions={tabScreenOptions}>
-      <AgentTab.Screen
-        name="InventoryTab"
-        component={InventoryScreen}
-        options={{ title: 'Inventory', tabBarLabel: 'Inventory' }}
+    <PublisherTab.Navigator screenOptions={tabScreenOptions}>
+      <PublisherTab.Screen
+        name="PostsTab"
+        component={PublisherPostsScreen}
+        options={{ title: 'My Properties', tabBarLabel: 'Properties', tabBarIcon: tabIcon('home') }}
       />
-      <AgentTab.Screen
+      <PublisherTab.Screen
         name="AssignedReqs"
         component={RequirementsScreen}
-        options={{ title: 'Leads', tabBarLabel: 'Leads' }}
+        options={{ title: 'Leads', tabBarLabel: 'Leads', tabBarIcon: tabIcon('people') }}
       />
-      <AgentTab.Screen
+      <PublisherTab.Screen
         name="ProfileTab"
         component={AgentProfileScreen}
-        options={{ title: 'Profile', tabBarLabel: 'Profile' }}
+        options={{ title: 'Profile', tabBarLabel: 'Profile', tabBarIcon: tabIcon('person') }}
       />
-    </AgentTab.Navigator>
+    </PublisherTab.Navigator>
   );
 }
 
@@ -78,82 +104,86 @@ function AdminTabs() {
       <AdminTab.Screen
         name="RequirementsTab"
         component={RequirementsScreen}
-        options={{ title: 'Match', tabBarLabel: 'Match' }}
+        options={{ title: 'Match', tabBarLabel: 'Match', tabBarIcon: tabIcon('git-compare') }}
       />
       <AdminTab.Screen
         name="AgentsTab"
         component={AgentsDirectoryScreen}
-        options={{ title: 'Agents', tabBarLabel: 'Agents' }}
+        options={{ title: 'Publishers', tabBarLabel: 'Publishers', tabBarIcon: tabIcon('briefcase') }}
       />
       <AdminTab.Screen
         name="CustomersTab"
         component={DashboardScreen}
-        options={{ title: 'Buyers', tabBarLabel: 'Buyers' }}
+        options={{ title: 'Buyers', tabBarLabel: 'Buyers', tabBarIcon: tabIcon('people') }}
       />
     </AdminTab.Navigator>
   );
 }
 
-function OwnerTabs() {
+function CustomerTabs() {
   return (
-    <OwnerTab.Navigator screenOptions={tabScreenOptions}>
-      <OwnerTab.Screen
-        name="OwnerListingsTab"
-        component={OwnerListingsScreen}
-        options={{ title: 'My Listings', tabBarLabel: 'Listings' }}
+    <CustomerTab.Navigator screenOptions={tabScreenOptions}>
+      <CustomerTab.Screen
+        name="CustomerBrowseTab"
+        component={CustomerBrowseScreen}
+        options={{ title: 'Browse', tabBarLabel: 'Browse', tabBarIcon: tabIcon('search') }}
       />
-      <OwnerTab.Screen
-        name="OwnerProfileTab"
-        component={OwnerProfileScreen}
-        options={{ title: 'Profile', tabBarLabel: 'Profile' }}
+      <CustomerTab.Screen
+        name="CustomerEnquiriesTab"
+        component={CustomerEnquiriesScreen}
+        options={{ title: 'Enquiries', tabBarLabel: 'Enquiries', tabBarIcon: tabIcon('chatbubbles') }}
       />
-    </OwnerTab.Navigator>
+      <CustomerTab.Screen
+        name="CustomerProfileTab"
+        component={CustomerProfileScreen}
+        options={{ title: 'Profile', tabBarLabel: 'Profile', tabBarIcon: tabIcon('person') }}
+      />
+    </CustomerTab.Navigator>
   );
 }
 
-function AgentStack() {
+function PublisherStack() {
   return (
-    <AgentStackNav.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
-      }}
+    <PublisherStackNav.Navigator
+      screenOptions={stackScreenOptions}
     >
-      <AgentStackNav.Screen
-        name="AgentHome"
-        component={AgentTabs}
+      <PublisherStackNav.Screen
+        name="PublisherHome"
+        component={PublisherTabs}
         options={{ headerShown: false }}
       />
-      <AgentStackNav.Screen
+      <PublisherStackNav.Screen
         name="PropertyForm"
         component={PropertyFormScreen}
         options={({ route }) => ({
-          title: route.params?.mode === 'edit' ? 'Edit property' : 'Add property',
+          title: route.params?.mode === 'edit' ? 'Edit property' : 'Add as Agent',
         })}
       />
-      <AgentStackNav.Screen
+      <PublisherStackNav.Screen
+        name="OwnerListingForm"
+        component={OwnerListingFormScreen}
+        options={({ route }) => ({
+          title: route.params?.mode === 'edit' ? 'Edit owner listing' : 'Post as Owner',
+        })}
+      />
+      <PublisherStackNav.Screen
         name="RequirementForm"
         component={RequirementFormScreen}
         options={{ title: 'New lead' }}
       />
-      <AgentStackNav.Screen
+      <PublisherStackNav.Screen
         name="RequirementDetail"
         component={RequirementDetailScreen}
         options={{ title: 'Lead detail' }}
       />
-    </AgentStackNav.Navigator>
+    </PublisherStackNav.Navigator>
   );
 }
 
 function AdminStack() {
   return (
     <AdminStackNav.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
-      }}
+      screenOptions={stackScreenOptions}
     >
       <AdminStackNav.Screen
         name="AdminHome"
@@ -173,7 +203,7 @@ function AdminStack() {
       <AdminStackNav.Screen
         name="AgentDetail"
         component={AgentDetailScreen}
-        options={{ title: 'Agent' }}
+        options={{ title: 'Publisher' }}
       />
       <AdminStackNav.Screen
         name="CustomerForm"
@@ -191,28 +221,22 @@ function AdminStack() {
   );
 }
 
-function OwnerStack() {
+function CustomerStack() {
   return (
-    <OwnerStackNav.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
-      }}
+    <CustomerStackNav.Navigator
+      screenOptions={stackScreenOptions}
     >
-      <OwnerStackNav.Screen
-        name="OwnerHome"
-        component={OwnerTabs}
+      <CustomerStackNav.Screen
+        name="CustomerHome"
+        component={CustomerTabs}
         options={{ headerShown: false }}
       />
-      <OwnerStackNav.Screen
-        name="OwnerListingForm"
-        component={OwnerListingFormScreen}
-        options={({ route }) => ({
-          title: route.params?.mode === 'edit' ? 'Edit listing' : 'New listing',
-        })}
+      <CustomerStackNav.Screen
+        name="CustomerListingDetail"
+        component={CustomerListingDetailScreen}
+        options={{ title: 'Listing' }}
       />
-    </OwnerStackNav.Navigator>
+    </CustomerStackNav.Navigator>
   );
 }
 
@@ -225,7 +249,7 @@ function OnboardingStack() {
 }
 
 function resolveRole(role) {
-  if (role === 'sales') return 'agent';
+  if (role === 'sales' || role === 'agent' || role === 'owner') return 'publisher';
   return role;
 }
 
@@ -235,7 +259,7 @@ export default function AppNavigator() {
 
   if (booting) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -243,16 +267,18 @@ export default function AppNavigator() {
 
   let body = <AuthStack />;
   if (isAuthenticated) {
-    if (normalizedRole === 'agent' && needsOnboarding) {
+    if (normalizedRole === 'publisher' && needsOnboarding) {
       body = <OnboardingStack />;
     } else if (normalizedRole === 'admin') {
       body = <AdminStack />;
-    } else if (normalizedRole === 'owner') {
-      body = <OwnerStack />;
+    } else if (normalizedRole === 'customer') {
+      body = <CustomerStack />;
+    } else if (normalizedRole === 'publisher') {
+      body = <PublisherStack />;
     } else {
-      body = <AgentStack />;
+      body = <PublisherStack />;
     }
   }
 
-  return <NavigationContainer>{body}</NavigationContainer>;
+  return <NavigationContainer theme={navTheme}>{body}</NavigationContainer>;
 }

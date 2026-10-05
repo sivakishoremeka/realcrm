@@ -32,9 +32,16 @@ const userSchema = new mongoose.Schema({
     default: 'local',
   },
   role: {
+    // publisher = Owner/Agent (post as either); customer = buyer/renter; admin = Business Owner
+    // agent/owner/sales kept for legacy documents
     type: String,
-    enum: ['admin', 'agent', 'owner', 'sales'], // sales kept for legacy; treated as agent
-    default: 'agent',
+    enum: ['admin', 'publisher', 'customer', 'agent', 'owner', 'sales'],
+    default: 'publisher',
+  },
+  // Canonical S3 URL for profile photo (clients get a signed URL via API)
+  profilePic: {
+    type: String,
+    default: '',
   },
   createdAt: {
     type: Date,
@@ -43,7 +50,9 @@ const userSchema = new mongoose.Schema({
 });
 
 userSchema.pre('save', async function hashPassword(next) {
-  if (this.role === 'sales') this.role = 'agent';
+  if (this.role === 'sales' || this.role === 'agent' || this.role === 'owner') {
+    this.role = 'publisher';
+  }
   if (!this.password || !this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
   next();
@@ -55,7 +64,10 @@ userSchema.methods.comparePassword = function comparePassword(candidate) {
 };
 
 userSchema.methods.normalizedRole = function normalizedRole() {
-  return this.role === 'sales' ? 'agent' : this.role;
+  if (this.role === 'sales' || this.role === 'agent' || this.role === 'owner') {
+    return 'publisher';
+  }
+  return this.role;
 };
 
 module.exports = mongoose.model('User', userSchema);

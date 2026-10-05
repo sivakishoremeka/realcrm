@@ -1,17 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import api from '../api/client';
+import Button from '../components/Button';
+import ChipRow from '../components/ChipRow';
+import Field from '../components/Field';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { CUSTOMER_STATUSES } from '../constants/config';
-import { colors, spacing } from '../constants/theme';
+import { colors, spacing, type } from '../constants/theme';
 
 export default function CustomerFormScreen({ navigation, route }) {
   const { mode = 'create', customerId } = route.params || {};
@@ -72,51 +67,29 @@ export default function CustomerFormScreen({ navigation, route }) {
     <View style={styles.container}>
       <LoadingOverlay visible={loading} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Name *</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} />
-
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
+        <Text style={styles.section} accessibilityRole="header">
+          Buyer details
+        </Text>
+        <Field label="Name *" value={name} onChangeText={setName} />
+        <Field
+          label="Email"
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
         />
-
-        <Text style={styles.label}>Phone</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="phone-pad"
-          value={phone}
-          onChangeText={setPhone}
-        />
+        <Field label="Phone" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
 
         <Text style={styles.label}>Status</Text>
-        <View style={styles.statusRow}>
-          {CUSTOMER_STATUSES.map((s) => (
-            <Pressable
-              key={s}
-              onPress={() => setStatus(s)}
-              style={[styles.chip, status === s && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, status === s && styles.chipTextActive]}>{s}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <ChipRow options={CUSTOMER_STATUSES} value={status} onSelect={setStatus} />
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.notes]}
-          multiline
-          value={notes}
-          onChangeText={setNotes}
-          textAlignVertical="top"
+        <Field label="Notes" multiline value={notes} onChangeText={setNotes} />
+
+        <Button
+          title={`${mode === 'edit' ? 'Update' : 'Create'} Buyer`}
+          onPress={onSave}
+          style={styles.submit}
         />
-
-        <Pressable style={styles.button} onPress={onSave}>
-          <Text style={styles.buttonText}>{mode === 'edit' ? 'Update' : 'Create'} Buyer</Text>
-        </Pressable>
       </ScrollView>
     </View>
   );
@@ -124,46 +97,14 @@ export default function CustomerFormScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingBottom: 48 },
+  section: type.heading,
   label: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: spacing.xs,
     marginTop: spacing.md,
+    marginBottom: 6,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  notes: { minHeight: 100 },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
-  chipTextActive: { color: '#fff' },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: spacing.lg,
-  },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  submit: { marginTop: spacing.lg },
 });

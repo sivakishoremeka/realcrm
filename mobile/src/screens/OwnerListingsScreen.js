@@ -12,14 +12,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
+import { formatPrice } from '../components/PriceField';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../constants/theme';
-
-function formatPrice(n) {
-  if (n == null) return '—';
-  return `₹${Number(n).toLocaleString('en-IN')}`;
-}
 
 export default function OwnerListingsScreen({ navigation }) {
   const { user, logout } = useAuth();

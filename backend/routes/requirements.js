@@ -1,6 +1,8 @@
 const express = require('express');
 const Requirement = require('../models/Requirement');
 const Customer = require('../models/Customer');
+const Interaction = require('../models/Interaction');
+const { searchLeads, leadStage } = require('../services/facetSearch');
 const auth = require('../middleware/auth');
 const { requireRole, normalizeRole } = require('../middleware/roles');
 const { matchAgentsForRequirement } = require('../services/matchEngine');
@@ -9,13 +11,24 @@ const router = express.Router();
 
 router.use(auth);
 
+const { signStoredImageUrl } = require('../services/s3');
+
 function populateRequirement(query) {
   return query
     .populate('customer', 'name phone email status notes')
     .populate('preferredZones', 'name city slug')
-    .populate('assignedAgent', 'name email')
+    .populate('assignedAgent', 'name email profilePic')
     .populate('createdBy', 'name email')
     .populate('leadGenerator', 'name email');
+}
+
+async function withSignedAssignee(doc) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  if (obj.assignedAgent?.profilePic) {
+    obj.assignedAgent.profilePic = await signStoredImageUrl(obj.assignedAgent.profilePic);
+  }
+  return obj;
 }
 
 function canAccessRequirement(user, requirement) {
@@ -50,25 +63,78 @@ function clampPercent(value, fallback) {
   return Math.min(100, Math.max(0, n));
 }
 
+/** Leads the user may list: all for admin, otherwise created / generated / assigned. */
+function listFilter(user) {
+  if (normalizeRole(user) === 'admin') return {};
+  return {
+    $or: [{ createdBy: user._id }, { leadGenerator: user._id }, { assignedAgent: user._id }],
+  };
+}
+
 router.get('/', requireRole('admin', 'agent'), async (req, res) => {
   try {
-    const filter =
-      normalizeRole(req.user) === 'admin'
-        ? {}
-        : {
-            $or: [
-              { createdBy: req.user._id },
-              { leadGenerator: req.user._id },
-              { assignedAgent: req.user._id },
-            ],
-          };
-
     const requirements = await populateRequirement(
-      Requirement.find(filter).sort({ createdAt: -1 })
+      Requirement.find(listFilter(req.user)).sort({ createdAt: -1 })
     );
     res.json(requirements);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch requirements' });
+  }
+});
+
+// Leads list with search, filters and facet counts ({ items, facets, total }).
+// Each item also carries `stage`, `isRead` and `lastFollowUp`.
+// See services/facetSearch.js for the params.
+router.get('/search', requireRole('admin', 'agent'), async (req, res) => {
+  try {
+    const userId = String(req.user._id);
+    const leads = await populateRequirement(
+      Requirement.find(listFilter(req.user)).select('+readBy').sort({ createdAt: -1 })
+    ).lean();
+
+    // Newest follow-up note per lead (sorted newest first, so first seen wins).
+    const followUps = await Interaction.find({
+      requirement: { $in: leads.map((lead) => lead._id) },
+      notes: { $ne: '' },
+    })
+      .sort({ date: -1 })
+      .select('requirement type notes date')
+      .lean();
+    const lastFollowUp = new Map();
+    followUps.forEach(({ requirement, type, notes, date }) => {
+      const key = String(requirement);
+      if (!lastFollowUp.has(key)) lastFollowUp.set(key, { type, notes, date });
+    });
+
+    const tagged = leads.map(({ readBy = [], ...lead }) => ({
+      ...lead,
+      stage: leadStage(lead, userId),
+      // Leads you created yourself are never "unread".
+      isRead:
+        String(lead.createdBy?._id || lead.createdBy) === userId ||
+        readBy.some((id) => String(id) === userId),
+      lastFollowUp: lastFollowUp.get(String(lead._id)) || null,
+    }));
+    res.json(searchLeads(tagged, req.query));
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to fetch leads' });
+  }
+});
+
+router.post('/:id/read', requireRole('admin', 'agent'), async (req, res) => {
+  try {
+    const requirement = await Requirement.findById(req.params.id);
+    if (!requirement) return res.status(404).json({ message: 'Requirement not found' });
+    if (!canAccessRequirement(req.user, requirement)) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    await Requirement.updateOne(
+      { _id: requirement._id },
+      { $addToSet: { readBy: req.user._id } }
+    );
+    res.json({ isRead: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to mark as read' });
   }
 });
 
@@ -185,7 +251,7 @@ router.put('/:id', requireRole('admin', 'agent'), async (req, res) => {
 
     await requirement.save();
     const populated = await populateRequirement(Requirement.findById(requirement._id));
-    res.json(populated);
+    res.json(await withSignedAssignee(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to update requirement' });
   }
@@ -208,7 +274,7 @@ router.get('/:id/matches', requireRole('admin', 'agent'), async (req, res) => {
       await requirement.save();
     }
     const populated = await populateRequirement(Requirement.findById(requirement._id));
-    res.json({ requirement: populated, matches });
+    res.json({ requirement: await withSignedAssignee(populated), matches });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to match agents' });
   }
@@ -222,7 +288,7 @@ router.get('/:id', requireRole('admin', 'agent'), async (req, res) => {
     if (!canAccessRequirement(req.user, requirement)) {
       return res.status(403).json({ message: 'Not authorized' });
     }
-    res.json(requirement);
+    res.json(await withSignedAssignee(requirement));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch requirement' });
   }
@@ -249,7 +315,7 @@ router.post('/:id/assign', requireRole('admin', 'agent'), async (req, res) => {
     });
 
     const populated = await populateRequirement(Requirement.findById(requirement._id));
-    res.json(populated);
+    res.json(await withSignedAssignee(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to assign agent' });
   }

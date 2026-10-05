@@ -10,11 +10,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import Card from '../components/Card';
+import EmptyState from '../components/EmptyState';
+import Fab from '../components/Fab';
+import ScreenHeader from '../components/ScreenHeader';
 import StatusBadge from '../components/StatusBadge';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { colors, spacing } from '../constants/theme';
+import { colors, radius, spacing, TOUCH_TARGET, type } from '../constants/theme';
 
 export default function DashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
@@ -43,34 +48,38 @@ export default function DashboardScreen({ navigation }) {
   );
 
   const renderItem = ({ item }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() => navigation.navigate('CustomerDetail', { customerId: item._id })}
-    >
+    <Card onPress={() => navigation.navigate('CustomerDetail', { customerId: item._id })}>
       <View style={styles.cardTop}>
-        <Text style={styles.name}>{item.name}</Text>
+        <Text style={styles.name} numberOfLines={2}>
+          {item.name}
+        </Text>
         <StatusBadge status={item.status} />
       </View>
-      <Text style={styles.company}>{item.phone || 'No phone'}</Text>
+      <Text style={styles.phone}>{item.phone || 'No phone'}</Text>
       <Text style={styles.meta}>
         {item.email || 'No email'}
         {item.assignedAgent?.name ? ` · Agent: ${item.assignedAgent.name}` : ''}
       </Text>
-    </Pressable>
+    </Card>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LoadingOverlay visible={loading} />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Buyers</Text>
-          <Text style={styles.count}>{customers.length} leads · {user?.name}</Text>
-        </View>
-        <Pressable onPress={logout} style={styles.logoutBtn}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title="Buyers"
+        subtitle={`${customers.length} leads · ${user?.name}`}
+        right={
+          <Pressable
+            onPress={logout}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutPressed]}
+          >
+            <Ionicons name="log-out-outline" size={22} color={colors.textMuted} />
+          </Pressable>
+        }
+      />
 
       <FlatList
         data={customers}
@@ -82,20 +91,19 @@ export default function DashboardScreen({ navigation }) {
         }
         ListEmptyComponent={
           !loading ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No buyers yet</Text>
-              <Text style={styles.emptyText}>Tap + to add a buyer lead</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="No buyers yet"
+              hint="Tap + to add a buyer lead"
+            />
           ) : null
         }
       />
 
-      <Pressable
-        style={styles.fab}
+      <Fab
         onPress={() => navigation.navigate('CustomerForm', { mode: 'create' })}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
+        label="Add buyer"
+      />
     </SafeAreaView>
   );
 }
@@ -105,96 +113,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  greeting: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  count: {
-    color: colors.textMuted,
-    marginTop: 2,
-  },
   logoutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: colors.dangerLight,
+    width: TOUCH_TARGET,
+    height: TOUCH_TARGET,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  logoutText: {
-    color: colors.danger,
-    fontWeight: '700',
+  logoutPressed: {
+    backgroundColor: colors.primaryLight,
   },
   list: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 100,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingBottom: 104,
   },
   cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   name: {
+    ...type.body,
     flex: 1,
-    fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
   },
-  company: {
-    marginTop: 6,
-    color: colors.primaryDark,
-    fontWeight: '600',
+  phone: {
+    ...type.body,
+    marginTop: spacing.sm,
   },
   meta: {
+    ...type.secondary,
     marginTop: 2,
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  empty: {
-    marginTop: 60,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  emptyText: {
-    marginTop: 6,
-    color: colors.textMuted,
-  },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    bottom: 28,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-  },
-  fabText: {
-    color: '#fff',
-    fontSize: 32,
-    lineHeight: 34,
-    fontWeight: '400',
   },
 });

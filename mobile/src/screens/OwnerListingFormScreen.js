@@ -7,15 +7,26 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import api from '../api/client';
+import Button from '../components/Button';
+import ChipRow from '../components/ChipRow';
+import PriceField, { splitRupees, toRupees } from '../components/PriceField';
+import Field from '../components/Field';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { ZoneChipsWrap } from '../components/ZonePicker';
+import ZonePicker from '../components/ZonePicker';
 import { LISTING_TYPES, PROPERTY_TYPES } from '../constants/config';
-import { colors, spacing } from '../constants/theme';
+// `type` is a state variable in this screen, so the theme text styles are aliased
+import {
+  colors,
+  radius,
+  spacing,
+  TOUCH_TARGET,
+  type as textStyles,
+} from '../constants/theme';
 
 export default function OwnerListingFormScreen({ navigation, route }) {
   const { mode = 'create', listingId: initialId } = route.params || {};
@@ -26,6 +37,7 @@ export default function OwnerListingFormScreen({ navigation, route }) {
   const [listingType, setListingType] = useState('Sale');
   const [bhk, setBhk] = useState('');
   const [price, setPrice] = useState('');
+  const [priceUnit, setPriceUnit] = useState('Lakhs');
   const [areaSqft, setAreaSqft] = useState('');
   const [zoneId, setZoneId] = useState(null);
   const [address, setAddress] = useState('');
@@ -44,7 +56,9 @@ export default function OwnerListingFormScreen({ navigation, route }) {
     setType(data.type || 'Apartment');
     setListingType(data.listingType || 'Sale');
     setBhk(data.bhk != null ? String(data.bhk) : '');
-    setPrice(data.price != null ? String(data.price) : '');
+    const savedPrice = splitRupees(data.price);
+    setPrice(savedPrice.amount);
+    setPriceUnit(savedPrice.unit);
     setAreaSqft(data.areaSqft != null ? String(data.areaSqft) : '');
     setZoneId(data.zone?._id || data.zone);
     setAddress(data.address || '');
@@ -98,7 +112,7 @@ export default function OwnerListingFormScreen({ navigation, route }) {
     type,
     listingType,
     bhk: bhk === '' ? null : Number(bhk),
-    price: Number(price),
+    price: toRupees(price, priceUnit),
     areaSqft: areaSqft === '' ? null : Number(areaSqft),
     zone: zoneId,
     address,
@@ -109,7 +123,7 @@ export default function OwnerListingFormScreen({ navigation, route }) {
   });
 
   const ensureSaved = async () => {
-    if (!title.trim() || !price || !zoneId) {
+    if (!title.trim() || !(toRupees(price, priceUnit) > 0) || !zoneId) {
       Alert.alert('Validation', 'Title, price, and zone are required.');
       return null;
     }
@@ -183,7 +197,7 @@ export default function OwnerListingFormScreen({ navigation, route }) {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsMultipleSelection: true,
         quality: 0.8,
         selectionLimit: 8,
@@ -254,230 +268,223 @@ export default function OwnerListingFormScreen({ navigation, route }) {
     ]);
   };
 
-  const ChipRow = ({ options, value, onChange }) => (
-    <View style={styles.chipRow}>
-      {options.map((opt) => (
-        <Pressable
-          key={opt}
-          onPress={() => onChange(opt)}
-          style={[styles.chip, value === opt && styles.chipActive]}
-        >
-          <Text style={[styles.chipText, value === opt && styles.chipTextActive]}>{opt}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-
   return (
     <View style={styles.container}>
       <LoadingOverlay visible={loading} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>Status: {status}</Text>
 
-        <Text style={styles.label}>Title</Text>
-        <TextInput
-          style={styles.input}
+        <Text style={styles.section} accessibilityRole="header">
+          Property details
+        </Text>
+        <Field
+          label="Title"
           value={title}
           onChangeText={setTitle}
           placeholder="3BHK in Gachibowli"
-          placeholderTextColor={colors.textMuted}
         />
 
         <Text style={styles.label}>Property type</Text>
-        <ChipRow options={PROPERTY_TYPES} value={type} onChange={setType} />
+        <ChipRow options={PROPERTY_TYPES} value={type} onSelect={setType} />
 
         <Text style={styles.label}>Listing type</Text>
-        <ChipRow options={LISTING_TYPES} value={listingType} onChange={refreshTermsForType} />
+        <ChipRow options={LISTING_TYPES} value={listingType} onSelect={refreshTermsForType} />
 
-        <Text style={styles.label}>BHK</Text>
-        <TextInput
-          style={styles.input}
+        <Field
+          label="BHK"
           value={bhk}
           onChangeText={setBhk}
           keyboardType="numeric"
           placeholder="3"
-          placeholderTextColor={colors.textMuted}
         />
-
-        <Text style={styles.label}>Price (₹)</Text>
-        <TextInput
-          style={styles.input}
-          value={price}
-          onChangeText={setPrice}
-          keyboardType="numeric"
-          placeholder="8500000"
-          placeholderTextColor={colors.textMuted}
+        <PriceField
+          label="Price (₹)"
+          amount={price}
+          unit={priceUnit}
+          onChangeAmount={setPrice}
+          onChangeUnit={setPriceUnit}
         />
-
-        <Text style={styles.label}>Area (sqft)</Text>
-        <TextInput
-          style={styles.input}
+        <Field
+          label="Area (sqft)"
           value={areaSqft}
           onChangeText={setAreaSqft}
           keyboardType="numeric"
           placeholder="1450"
-          placeholderTextColor={colors.textMuted}
         />
 
-        <Text style={styles.label}>Zone</Text>
-        <ZoneChipsWrap
+        <Text style={styles.section} accessibilityRole="header">
+          Location
+        </Text>
+        <Text style={styles.label}>Area</Text>
+        <ZonePicker
           zones={zones}
           selectedIds={zoneId ? [zoneId] : []}
-          onChange={(ids) => setZoneId(ids[ids.length - 1] || null)}
+          onChange={(ids) => setZoneId(ids[0] || null)}
+          multi={false}
+          placeholder="Select area"
         />
-
-        <Text style={styles.label}>Address</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
+        <Field
+          label="Address"
           value={address}
           onChangeText={setAddress}
           multiline
           placeholder="Flat / street / landmark"
-          placeholderTextColor={colors.textMuted}
         />
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
+        <Text style={styles.section} accessibilityRole="header">
+          More details
+        </Text>
+        <Field
+          label="Notes"
           value={notes}
           onChangeText={setNotes}
           multiline
           placeholder="Facing, floor, amenities…"
-          placeholderTextColor={colors.textMuted}
         />
 
         <View style={styles.switchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.labelInline}>Listed via agent</Text>
-            <Text style={styles.switchHint}>Informational only — no agent claim yet</Text>
+          <View style={styles.switchText}>
+            <Text style={styles.switchLabel}>Listed via agent</Text>
+            <Text style={textStyles.secondary}>Informational only — no agent claim yet</Text>
           </View>
-          <Switch value={listedViaAgent} onValueChange={setListedViaAgent} />
+          <Switch
+            accessibilityLabel="Listed via agent"
+            value={listedViaAgent}
+            onValueChange={setListedViaAgent}
+            trackColor={{ false: colors.border, true: colors.primary }}
+          />
         </View>
         {listedViaAgent ? (
-          <>
-            <Text style={styles.label}>Via-agent note</Text>
-            <TextInput
-              style={styles.input}
-              value={viaAgentNote}
-              onChangeText={setViaAgentNote}
-              placeholder="e.g. Working with ABC Realty"
-              placeholderTextColor={colors.textMuted}
-            />
-          </>
+          <Field
+            label="Via-agent note"
+            value={viaAgentNote}
+            onChangeText={setViaAgentNote}
+            placeholder="e.g. Working with ABC Realty"
+          />
         ) : null}
 
-        <Text style={styles.label}>Photos</Text>
+        <Text style={styles.section} accessibilityRole="header">
+          Photos
+        </Text>
         <View style={styles.imageGrid}>
           {images.map((url) => (
             <View key={url} style={styles.imageWrap}>
               <Image source={{ uri: url }} style={styles.thumb} />
-              <Pressable style={styles.removeImg} onPress={() => removeImage(url)}>
-                <Text style={styles.removeImgText}>×</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove photo"
+                hitSlop={10}
+                style={({ pressed }) => [styles.removeImg, pressed && styles.pressed]}
+                onPress={() => removeImage(url)}
+              >
+                <Ionicons name="close" size={18} color={colors.text} />
               </Pressable>
             </View>
           ))}
-          <Pressable style={styles.addImg} onPress={pickAndUploadImages}>
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.addImg, pressed && styles.pressed]}
+            onPress={pickAndUploadImages}
+          >
+            <Ionicons name="camera-outline" size={24} color={colors.primary} />
             <Text style={styles.addImgText}>+ Add</Text>
           </Pressable>
         </View>
 
-        <Text style={styles.label}>Terms & Conditions</Text>
-        <TextInput
-          style={[styles.input, styles.terms]}
+        <Text style={styles.section} accessibilityRole="header">
+          Terms & Conditions
+        </Text>
+        <Field
+          accessibilityLabel="Terms & Conditions"
+          containerStyle={styles.termsWrap}
+          style={styles.terms}
           value={termsText}
           onChangeText={setTermsText}
           multiline
-          textAlignVertical="top"
         />
 
         <Pressable
-          style={styles.acceptRow}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: termsAccepted }}
+          style={({ pressed }) => [styles.acceptRow, pressed && styles.pressed]}
           onPress={() => setTermsAccepted((v) => !v)}
         >
-          <View style={[styles.checkbox, termsAccepted && styles.checkboxOn]}>
-            {termsAccepted ? <Text style={styles.checkMark}>✓</Text> : null}
-          </View>
+          <Ionicons
+            name={termsAccepted ? 'checkbox' : 'square-outline'}
+            size={24}
+            color={colors.primary}
+          />
           <Text style={styles.acceptText}>I accept these Terms & Conditions</Text>
         </Pressable>
 
-        <Pressable style={styles.primaryBtn} onPress={onPublish}>
-          <Text style={styles.primaryBtnText}>Publish</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryBtn} onPress={onSaveDraft}>
-          <Text style={styles.secondaryBtnText}>Save draft</Text>
-        </Pressable>
-        <Pressable style={styles.dangerBtn} onPress={onDelete}>
-          <Text style={styles.dangerBtnText}>
-            {listingId ? 'Delete listing' : 'Cancel'}
-          </Text>
-        </Pressable>
+        <Button title="Publish" onPress={onPublish} style={styles.submit} />
+        <Button
+          variant="secondary"
+          title="Save draft"
+          onPress={onSaveDraft}
+          style={styles.action}
+        />
+        <Button
+          variant={listingId ? 'danger' : 'text'}
+          title={listingId ? 'Delete listing' : 'Cancel'}
+          onPress={onDelete}
+          style={styles.action}
+        />
       </ScrollView>
     </View>
   );
 }
 
+const THUMB_SIZE = 88;
+const REMOVE_SIZE = 28;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: spacing.lg, paddingBottom: 40 },
-  hint: { color: colors.textMuted, marginBottom: spacing.sm, fontWeight: '600' },
+  scroll: { padding: spacing.lg, paddingBottom: 48 },
+  hint: { ...textStyles.secondary, fontWeight: '600' },
+  section: { ...textStyles.heading, marginTop: spacing.lg },
   label: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
     marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginBottom: 6,
   },
-  labelInline: { fontSize: 14, fontWeight: '700', color: colors.text },
-  switchHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-  terms: { minHeight: 180, fontSize: 13, lineHeight: 18 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.surface,
-  },
-  chipActive: { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
-  chipText: { fontWeight: '600', color: colors.textMuted },
-  chipTextActive: { color: colors.primary },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.lg,
-    gap: 12,
+    minHeight: TOUCH_TARGET,
+    marginTop: spacing.md,
+    gap: spacing.md,
   },
-  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  imageWrap: { width: 88, height: 88, borderRadius: 10, overflow: 'hidden' },
+  switchText: { flex: 1 },
+  switchLabel: { ...textStyles.body, fontWeight: '600' },
+  termsWrap: { marginTop: spacing.md },
+  terms: { minHeight: 180 },
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  imageWrap: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: radius.control,
+    overflow: 'hidden',
+  },
   thumb: { width: '100%', height: '100%' },
   removeImg: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    top: 4,
+    right: 4,
+    width: REMOVE_SIZE,
+    height: REMOVE_SIZE,
+    borderRadius: REMOVE_SIZE / 2,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  removeImgText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   addImg: {
-    width: 88,
-    height: 88,
-    borderRadius: 10,
+    minWidth: THUMB_SIZE,
+    minHeight: THUMB_SIZE,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.control,
     borderWidth: 1,
     borderColor: colors.border,
     borderStyle: 'dashed',
@@ -485,43 +492,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
-  addImgText: { color: colors.primary, fontWeight: '700' },
+  addImgText: { fontSize: 14, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  pressed: { opacity: 0.8 },
   acceptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.lg,
-    gap: 10,
+    minHeight: TOUCH_TARGET,
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkMark: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  acceptText: { flex: 1, color: colors.text, fontWeight: '600' },
-  primaryBtn: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    marginTop: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: colors.text, fontWeight: '700', fontSize: 16 },
-  dangerBtn: { marginTop: spacing.md, paddingVertical: 12, alignItems: 'center' },
-  dangerBtnText: { color: '#EF4444', fontWeight: '700' },
+  acceptText: { ...textStyles.body, flex: 1 },
+  submit: { marginTop: spacing.lg },
+  action: { marginTop: spacing.sm },
 });

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../constants/theme';
+import { StyleSheet, Text, View } from 'react-native';
+import Button from './Button';
+import { colors, spacing, type } from '../constants/theme';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -22,19 +23,16 @@ export default class ErrorBoundary extends React.Component {
 
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Something went wrong</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Something went wrong
+        </Text>
         <Text style={styles.message}>{String(error?.message || error)}</Text>
         {!!error?.stack && (
           <Text style={styles.stack} numberOfLines={12}>
             {String(error.stack)}
           </Text>
         )}
-        <Pressable
-          style={styles.button}
-          onPress={() => this.setState({ error: null })}
-        >
-          <Text style={styles.buttonText}>Try again</Text>
-        </Pressable>
+        <Button title="Try again" onPress={() => this.setState({ error: null })} />
       </View>
     );
   }
@@ -48,30 +46,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
+    ...type.heading,
     marginBottom: spacing.sm,
   },
   message: {
+    ...type.secondary,
     color: colors.danger,
     marginBottom: spacing.sm,
-    lineHeight: 20,
   },
   stack: {
-    color: colors.textMuted,
-    fontSize: 11,
+    ...type.caption,
+    fontWeight: '400',
     marginBottom: spacing.lg,
-    lineHeight: 15,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
   },
 });

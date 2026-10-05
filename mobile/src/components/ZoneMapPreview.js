@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../constants/theme';
+import { colors, radius, spacing, type } from '../constants/theme';
 
 let MapView = null;
 let Marker = null;
@@ -87,6 +87,7 @@ export default function ZoneMapPreview({ zones = [], selectedIds = [], height = 
             coordinate={{ latitude: p.lat, longitude: p.lng }}
             title={p.name}
             description={p.city || 'Hyderabad'}
+            pinColor={colors.primary}
           />
         ))}
       </MapView>
@@ -96,7 +97,7 @@ export default function ZoneMapPreview({ zones = [], selectedIds = [], height = 
 
 const styles = StyleSheet.create({
   wrap: {
-    borderRadius: 12,
+    borderRadius: radius.card,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
@@ -105,7 +106,8 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   fallback: {
     marginTop: spacing.sm,
-    borderRadius: 12,
+    borderRadius: radius.card,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.primaryLight,
@@ -113,18 +115,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fallbackTitle: {
-    fontWeight: '800',
-    color: colors.primaryDark,
+    ...type.body,
+    fontWeight: '700',
+    color: colors.primary,
     marginBottom: 6,
   },
   fallbackText: {
-    color: colors.primaryDark,
-    fontSize: 13,
+    ...type.secondary,
+    color: colors.primary,
     marginBottom: 2,
   },
   hint: {
-    marginTop: 8,
-    fontSize: 11,
-    color: colors.textMuted,
+    ...type.caption,
+    marginTop: spacing.sm,
   },
 });

@@ -1,18 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../api/client';
+import Card from '../components/Card';
+import EmptyState from '../components/EmptyState';
+import RatedAvatar from '../components/RatedAvatar';
+import ScreenHeader from '../components/ScreenHeader';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { colors, spacing } from '../constants/theme';
+import { colors, spacing, type } from '../constants/theme';
 
 export default function AgentsDirectoryScreen({ navigation }) {
   const [agents, setAgents] = useState([]);
@@ -42,10 +38,10 @@ export default function AgentsDirectoryScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LoadingOverlay visible={loading} />
-      <View style={styles.header}>
-        <Text style={styles.title}>Agents & dealers</Text>
-        <Text style={styles.sub}>{agents.length} onboarded profiles</Text>
-      </View>
+      <ScreenHeader
+        title="Agents & dealers"
+        subtitle={`${agents.length} onboarded profiles`}
+      />
 
       <FlatList
         data={agents}
@@ -56,30 +52,43 @@ export default function AgentsDirectoryScreen({ navigation }) {
         }
         ListEmptyComponent={
           !loading ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No agents yet</Text>
-              <Text style={styles.emptyText}>Agents appear after they register and onboard</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="No agents yet"
+              hint="Agents appear after they register and onboard"
+            />
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.card}
+          <Card
             onPress={() =>
               navigation.navigate('AgentDetail', { agentId: item.user?._id || item.user })
             }
           >
-            <Text style={styles.name}>{item.user?.name || 'Agent'}</Text>
-            <Text style={styles.agency}>{item.agencyName || 'Independent dealer'}</Text>
-            <Text style={styles.zones}>
-              {(item.zones || []).map((z) => z.name).join(', ') || 'No zones set'}
-            </Text>
-            <Text style={styles.meta}>
-              {item.availableCount ?? 0} available · {item.inventoryCount ?? 0} total
-              {item.onboardingComplete ? '' : ' · Incomplete onboarding'}
-            </Text>
-            {!!item.phone && <Text style={styles.phone}>{item.phone}</Text>}
-          </Pressable>
+            <View style={styles.row}>
+              <RatedAvatar
+                uri={item.user?.profilePic}
+                name={item.user?.name}
+                ratingAvg={item.ratingAvg}
+                ratingCount={item.ratingCount}
+                size={56}
+              />
+              <View style={styles.metaCol}>
+                <Text style={styles.name} numberOfLines={2}>
+                  {item.user?.name || 'Agent'}
+                </Text>
+                <Text style={styles.agency}>{item.agencyName || 'Independent dealer'}</Text>
+                <Text style={styles.zones}>
+                  {(item.zones || []).map((z) => z.name).join(', ') || 'No zones set'}
+                </Text>
+                <Text style={styles.meta}>
+                  {item.availableCount ?? 0} available · {item.inventoryCount ?? 0} total
+                  {item.onboardingComplete ? '' : ' · Incomplete onboarding'}
+                </Text>
+                {!!item.phone && <Text style={styles.phone}>{item.phone}</Text>}
+              </View>
+            </View>
+          </Card>
         )}
       />
     </SafeAreaView>
@@ -88,28 +97,12 @@ export default function AgentsDirectoryScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
-  sub: { color: colors.textMuted, marginTop: 2 },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: 40 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  name: { fontSize: 16, fontWeight: '800', color: colors.text },
-  agency: { marginTop: 4, color: colors.primaryDark, fontWeight: '600' },
-  zones: { marginTop: 4, color: colors.textMuted },
-  meta: { marginTop: 6, fontSize: 12, color: colors.textMuted },
-  phone: { marginTop: 4, color: colors.text, fontWeight: '600' },
-  empty: { marginTop: 60, alignItems: 'center' },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
-  emptyText: { marginTop: 6, color: colors.textMuted, textAlign: 'center' },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
+  row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
+  metaCol: { flex: 1 },
+  name: { ...type.body, fontWeight: '700' },
+  agency: { ...type.secondary, marginTop: spacing.xs, color: colors.text },
+  zones: { ...type.secondary, marginTop: spacing.xs },
+  meta: { ...type.secondary, marginTop: spacing.sm },
+  phone: { ...type.body, marginTop: spacing.xs, fontWeight: '600' },
 });

@@ -6,6 +6,7 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { requireRole, normalizeRole } = require('../middleware/roles');
 const { encryptToken } = require('../services/tokenCrypto');
+const { signStoredImageUrl, withSignedImagesMany } = require('../services/s3');
 
 const router = express.Router();
 
@@ -28,10 +29,13 @@ async function getOrCreateProfile(userId, { withSecrets = false } = {}) {
   return profile;
 }
 
-function publicProfilePayload(profile, user, role) {
+async function publicProfilePayload(profile, user, role) {
   const obj = profile.toObject();
   delete obj.metaAccessTokenEnc;
   delete obj.openaiApiKeyEnc;
+  const profilePic = user.profilePic
+    ? await signStoredImageUrl(user.profilePic)
+    : '';
   return {
     ...obj,
     instagramConnected: !!(profile.instagramUserId && profile.instagramConnectedAt),
@@ -42,6 +46,7 @@ function publicProfilePayload(profile, user, role) {
       name: user.name,
       email: user.email,
       role,
+      profilePic,
     },
   };
 }
@@ -64,7 +69,7 @@ router.get('/me', requireRole('agent', 'admin'), async (req, res) => {
 
     const profile = await getOrCreateProfile(req.user._id, { withSecrets: true });
     await profile.populate('zones', 'name city slug lat lng');
-    res.json(publicProfilePayload(profile, req.user, normalizeRole(req.user)));
+    res.json(await publicProfilePayload(profile, req.user, normalizeRole(req.user)));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to load profile' });
   }
@@ -100,7 +105,7 @@ router.put('/me', requireRole('agent'), async (req, res) => {
     await profile.save();
     const fresh = await getOrCreateProfile(req.user._id, { withSecrets: true });
     await fresh.populate('zones', 'name city slug lat lng');
-    res.json(publicProfilePayload(fresh, req.user, 'agent'));
+    res.json(await publicProfilePayload(fresh, req.user, 'agent'));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to update profile' });
   }
@@ -172,21 +177,29 @@ router.put('/me/zones', requireRole('agent'), async (req, res) => {
 router.get('/', requireRole('admin'), async (_req, res) => {
   try {
     const profiles = await AgentProfile.find()
-      .populate('user', 'name email role')
+      .populate('user', 'name email role profilePic')
       .populate('zones', 'name city slug lat lng')
       .sort({ updatedAt: -1 });
 
     const withCounts = await Promise.all(
       profiles
-        .filter((p) => p.user && (p.user.role === 'agent' || p.user.role === 'sales'))
+        .filter(
+          (p) =>
+            p.user &&
+            ['publisher', 'agent', 'owner', 'sales'].includes(p.user.role)
+        )
         .map(async (p) => {
           const inventoryCount = await Property.countDocuments({ agent: p.user._id });
           const availableCount = await Property.countDocuments({
             agent: p.user._id,
             status: 'Available',
           });
+          const obj = p.toObject();
+          if (obj.user?.profilePic) {
+            obj.user.profilePic = await signStoredImageUrl(obj.user.profilePic);
+          }
           return {
-            ...p.toObject(),
+            ...obj,
             inventoryCount,
             availableCount,
           };
@@ -202,16 +215,23 @@ router.get('/', requireRole('admin'), async (_req, res) => {
 router.get('/:id', requireRole('admin'), async (req, res) => {
   try {
     const profile = await AgentProfile.findOne({ user: req.params.id })
-      .populate('user', 'name email role')
+      .populate('user', 'name email role profilePic')
       .populate('zones', 'name city slug lat lng');
     if (!profile) {
-      const user = await User.findById(req.params.id).select('name email role');
+      const user = await User.findById(req.params.id).select(
+        'name email role profilePic'
+      );
       if (!user) return res.status(404).json({ message: 'Agent not found' });
+      const u = user.toObject();
+      if (u.profilePic) u.profilePic = await signStoredImageUrl(u.profilePic);
       return res.json({
-        user,
+        user: u,
         onboardingComplete: false,
         zones: [],
         inventoryCount: 0,
+        ratingAvg: 0,
+        ratingCount: 0,
+        reviews: [],
       });
     }
     const inventoryCount = await Property.countDocuments({ agent: profile.user._id });
@@ -219,7 +239,21 @@ router.get('/:id', requireRole('admin'), async (req, res) => {
       .populate('zone', 'name city')
       .sort({ createdAt: -1 })
       .limit(50);
-    res.json({ ...profile.toObject(), inventoryCount, properties });
+    const AgentReview = require('../models/AgentReview');
+    const reviews = await AgentReview.find({ agent: profile.user._id })
+      .populate('author', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(20);
+    const obj = profile.toObject();
+    if (obj.user?.profilePic) {
+      obj.user.profilePic = await signStoredImageUrl(obj.user.profilePic);
+    }
+    res.json({
+      ...obj,
+      inventoryCount,
+      properties: await withSignedImagesMany(properties),
+      reviews,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to load agent' });
   }

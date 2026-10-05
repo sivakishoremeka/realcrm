@@ -11,7 +11,9 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../context/AuthContext';
 import { GOOGLE_WEB_CLIENT_ID } from '../constants/googleAuth';
-import { colors, spacing } from '../constants/theme';
+import { colors, radius, spacing, TOUCH_TARGET } from '../constants/theme';
+
+const GOOGLE_RED = '#EA4335';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -92,7 +94,14 @@ export default function GoogleSignInButton({
 
   return (
     <Pressable
-      style={[styles.button, busy && styles.buttonDisabled]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: busy, busy }}
+      style={({ pressed }) => [
+        styles.button,
+        pressed && styles.pressed,
+        busy && styles.buttonDisabled,
+      ]}
       onPress={onPress}
       disabled={busy}
     >
@@ -115,13 +124,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingVertical: 13,
+    backgroundColor: colors.surface,
+    borderRadius: radius.control,
+    minHeight: TOUCH_TARGET,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.8,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   row: {
     flexDirection: 'row',
@@ -130,13 +145,14 @@ const styles = StyleSheet.create({
   },
   g: {
     fontSize: 18,
-    fontWeight: '800',
-    color: '#EA4335',
-    marginRight: 10,
+    fontWeight: '700',
+    color: GOOGLE_RED,
+    marginRight: spacing.sm,
   },
   text: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
+    flexShrink: 1,
   },
 });

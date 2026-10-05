@@ -1,27 +1,25 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
 import api from '../api/client';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { ZoneChipsWrap } from '../components/ZonePicker';
+import ZonePicker from '../components/ZonePicker';
 import ZoneMapPreview from '../components/ZoneMapPreview';
+import ProfileAvatarPicker from '../components/ProfileAvatarPicker';
 import { useAuth } from '../context/AuthContext';
-import { colors, spacing } from '../constants/theme';
+import Button from '../components/Button';
+import Card from '../components/Card';
+import Field from '../components/Field';
+import ScreenHeader from '../components/ScreenHeader';
+import { colors, radius, spacing, TOUCH_TARGET, type } from '../constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function AgentProfileScreen() {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, refreshSessionUser } = useAuth();
   const [phone, setPhone] = useState('');
   const [agencyName, setAgencyName] = useState('');
   const [bio, setBio] = useState('');
@@ -34,6 +32,8 @@ export default function AgentProfileScreen() {
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Key of the expanded section; one at a time keeps the screen short.
+  const [open, setOpen] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -53,6 +53,13 @@ export default function AgentProfileScreen() {
       setOpenaiModel(meRes.data.openaiModel || 'gpt-4o-mini');
       setOpenaiKeyInput('');
       setIgStatus(igRes.data);
+      if (meRes.data.user?.profilePic != null || meRes.data.ratingAvg != null) {
+        await updateUser({
+          profilePic: meRes.data.user?.profilePic || user?.profilePic,
+          ratingAvg: meRes.data.ratingAvg ?? user?.ratingAvg ?? 0,
+          ratingCount: meRes.data.ratingCount ?? user?.ratingCount ?? 0,
+        });
+      }
     } catch (err) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to load profile');
     } finally {
@@ -62,6 +69,7 @@ export default function AgentProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      refreshSessionUser();
       load();
     }, [])
   );
@@ -158,172 +166,227 @@ export default function AgentProfileScreen() {
     ]);
   };
 
+  const toggle = (key) => setOpen((current) => (current === key ? null : key));
+  const personalSummary = [phone.trim(), agencyName.trim()].filter(Boolean).join(' · ');
+  const areaCount = selectedZones.length;
+  const igConnected = !!igStatus?.connected;
+  const igHandle = `@${igStatus?.instagramUsername || 'business'}`;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LoadingOverlay visible={loading || saving} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>{user?.name}</Text>
-        <Text style={styles.sub}>{user?.email}</Text>
-
-        <Text style={styles.label}>Phone</Text>
-        <TextInput style={styles.input} value={phone} onChangeText={setPhone} />
-
-        <Text style={styles.label}>Agency</Text>
-        <TextInput style={styles.input} value={agencyName} onChangeText={setAgencyName} />
-
-        <Text style={styles.label}>Years experience</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={yearsExperience}
-          onChangeText={setYearsExperience}
-        />
-
-        <Text style={styles.label}>Bio</Text>
-        <TextInput
-          style={[styles.input, styles.notes]}
-          multiline
-          value={bio}
-          onChangeText={setBio}
-          textAlignVertical="top"
-        />
-
-        <Text style={styles.label}>Areas served</Text>
-        <ZoneChipsWrap zones={zones} selectedIds={selectedZones} onChange={setSelectedZones} />
-        <ZoneMapPreview zones={zones} selectedIds={selectedZones} height={200} />
-
-        <Text style={styles.section}>Your OpenAI credits (LLM)</Text>
-        <View style={styles.igBox}>
-          <Text style={styles.igText}>
-            Paste your personal OpenAI API key. Reel captions use your free/paid credits — not a
-            shared platform key. Keys are stored encrypted and never shown again.
-          </Text>
-          <Text style={styles.statusLine}>
-            Status: {hasOpenaiKey ? 'Key saved' : 'No key yet'}
-          </Text>
-          <Text style={styles.label}>OpenAI API key</Text>
-          <TextInput
-            style={styles.input}
-            value={openaiKeyInput}
-            onChangeText={setOpenaiKeyInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            placeholder={hasOpenaiKey ? '•••• sk-... (enter to replace)' : 'sk-...'}
-            placeholderTextColor={colors.textMuted}
-          />
-          <Text style={styles.label}>Model</Text>
-          <TextInput
-            style={styles.input}
-            value={openaiModel}
-            onChangeText={setOpenaiModel}
-            autoCapitalize="none"
-            placeholder="gpt-4o-mini"
-            placeholderTextColor={colors.textMuted}
-          />
-          <Pressable style={styles.button} onPress={saveOpenaiKey}>
-            <Text style={styles.buttonText}>
-              {hasOpenaiKey ? 'Replace OpenAI key' : 'Save OpenAI key'}
+        <ScreenHeader title="Profile" />
+        <View style={styles.body}>
+          <Card style={styles.hero}>
+            <ProfileAvatarPicker
+              user={user}
+              onUpdated={(next) => updateUser(next)}
+              showRating
+            />
+            <Text style={styles.heroName} numberOfLines={1}>
+              {user?.name}
             </Text>
-          </Pressable>
-          {hasOpenaiKey && (
-            <Pressable style={[styles.secondaryBtn, { marginTop: 8 }]} onPress={clearOpenaiKey}>
-              <Text style={styles.secondaryText}>Remove key</Text>
-            </Pressable>
-          )}
+            <Text style={styles.heroEmail} numberOfLines={1}>
+              {user?.email}
+            </Text>
+          </Card>
+
+          <Text style={styles.group} accessibilityRole="header">
+            Account
+          </Text>
+          <Section
+            icon="person-outline"
+            title="Personal details"
+            summary={personalSummary || 'Add phone and agency'}
+            done={!!phone.trim()}
+            open={open === 'personal'}
+            onToggle={() => toggle('personal')}
+          >
+            <Field
+              label="Phone"
+              containerStyle={styles.firstField}
+              value={phone}
+              onChangeText={setPhone}
+            />
+            <Field label="Agency" value={agencyName} onChangeText={setAgencyName} />
+            <Field
+              label="Years experience"
+              keyboardType="number-pad"
+              value={yearsExperience}
+              onChangeText={setYearsExperience}
+            />
+            <Field label="Bio" multiline value={bio} onChangeText={setBio} />
+            <Button title="Save profile" onPress={onSave} style={styles.cardAction} />
+          </Section>
+          <Section
+            icon="map-outline"
+            title="Areas served"
+            summary={
+              areaCount ? `${areaCount} area${areaCount === 1 ? '' : 's'} selected` : 'No areas selected'
+            }
+            done={areaCount > 0}
+            open={open === 'areas'}
+            onToggle={() => toggle('areas')}
+          >
+            <ZonePicker
+              zones={zones}
+              selectedIds={selectedZones}
+              onChange={setSelectedZones}
+              multi
+              placeholder="Select areas served"
+            />
+            <ZoneMapPreview zones={zones} selectedIds={selectedZones} height={200} />
+            <Button title="Save profile" onPress={onSave} style={styles.cardAction} />
+          </Section>
+
+          <Text style={styles.group} accessibilityRole="header">
+            Integrations
+          </Text>
+          <Section
+            icon="sparkles-outline"
+            title="AI captions (OpenAI)"
+            summary={hasOpenaiKey ? 'Key saved' : 'Not set up'}
+            done={hasOpenaiKey}
+            open={open === 'openai'}
+            onToggle={() => toggle('openai')}
+          >
+            <Text style={styles.cardText}>
+              Paste your personal OpenAI API key. Reel captions use your free/paid credits — not a
+              shared platform key. Keys are stored encrypted and never shown again.
+            </Text>
+            <Field
+              label="OpenAI API key"
+              value={openaiKeyInput}
+              onChangeText={setOpenaiKeyInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              placeholder={hasOpenaiKey ? '•••• sk-... (enter to replace)' : 'sk-...'}
+            />
+            <Field
+              label="Model"
+              value={openaiModel}
+              onChangeText={setOpenaiModel}
+              autoCapitalize="none"
+              placeholder="gpt-4o-mini"
+            />
+            <Button
+              title={hasOpenaiKey ? 'Replace OpenAI key' : 'Save OpenAI key'}
+              onPress={saveOpenaiKey}
+              variant="secondary"
+              style={styles.cardAction}
+            />
+            {hasOpenaiKey && (
+              <Button
+                title="Remove key"
+                onPress={clearOpenaiKey}
+                variant="danger"
+                style={styles.cardActionNext}
+              />
+            )}
+          </Section>
+          <Section
+            icon="logo-instagram"
+            title="Instagram Reels"
+            summary={igConnected ? igHandle : 'Not connected'}
+            done={igConnected}
+            open={open === 'instagram'}
+            onToggle={() => toggle('instagram')}
+          >
+            <Text style={styles.cardText}>
+              {igConnected
+                ? `Connected as ${igHandle}`
+                : 'Connect an Instagram Business account linked to a Facebook Page to auto-publish Reels.'}
+            </Text>
+            <Button
+              title={igConnected ? 'Disconnect' : 'Connect Instagram'}
+              onPress={igConnected ? disconnectInstagram : connectInstagram}
+              variant={igConnected ? 'danger' : 'secondary'}
+              style={styles.cardActionNext}
+            />
+          </Section>
+
+          <Button title="Logout" onPress={logout} variant="danger" style={styles.logout} />
         </View>
-
-        <Text style={styles.section}>Instagram Reels</Text>
-        {igStatus?.connected ? (
-          <View style={styles.igBox}>
-            <Text style={styles.igText}>
-              Connected as @{igStatus.instagramUsername || 'business'}
-            </Text>
-            <Pressable style={styles.secondaryBtn} onPress={disconnectInstagram}>
-              <Text style={styles.secondaryText}>Disconnect</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.igBox}>
-            <Text style={styles.igText}>
-              Connect an Instagram Business account linked to a Facebook Page to auto-publish
-              Reels.
-            </Text>
-            <Pressable style={styles.button} onPress={connectInstagram}>
-              <Text style={styles.buttonText}>Connect Instagram</Text>
-            </Pressable>
-          </View>
-        )}
-
-        <Pressable style={styles.button} onPress={onSave}>
-          <Text style={styles.buttonText}>Save profile</Text>
-        </Pressable>
-        <Pressable onPress={logout} style={styles.logout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+/** Collapsible settings row: icon, title and a one-line status; children show when open. */
+function Section({ icon, title, summary, done, open, onToggle, children }) {
+  return (
+    <Card style={styles.sectionCard}>
+      <Pressable
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${title}, ${summary}`}
+        style={({ pressed }) => [styles.sectionHead, pressed && styles.sectionPressed]}
+      >
+        <View style={styles.sectionIcon}>
+          <Ionicons name={icon} size={20} color={colors.primary} />
+        </View>
+        <View style={styles.sectionText}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={[styles.sectionSummary, done && styles.sectionDone]} numberOfLines={1}>
+            {summary}
+          </Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textMuted} />
+      </Pressable>
+      {open && <View style={styles.sectionBody}>{children}</View>}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
-  sub: { color: colors.textMuted, marginBottom: spacing.md },
-  section: {
+  content: { paddingBottom: spacing.xl },
+  body: { paddingHorizontal: spacing.lg },
+  hero: { alignItems: 'center', paddingVertical: spacing.lg },
+  heroName: { ...type.heading },
+  heroEmail: { ...type.secondary, marginTop: 2 },
+  group: {
+    ...type.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginTop: spacing.lg,
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.xs,
-    marginTop: spacing.md,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  notes: { minHeight: 80 },
-  igBox: {
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  igText: { color: colors.textMuted, marginBottom: spacing.sm, lineHeight: 20 },
-  statusLine: {
-    color: colors.primaryDark,
-    fontWeight: '700',
     marginBottom: spacing.sm,
+    marginLeft: spacing.xs,
   },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
+  sectionCard: { padding: 0, marginBottom: spacing.sm },
+  sectionHead: {
+    borderRadius: radius.card,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.md,
+    minHeight: TOUCH_TARGET + spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  buttonText: { color: '#fff', fontWeight: '700' },
-  secondaryBtn: {
-    backgroundColor: colors.dangerLight,
-    borderRadius: 10,
-    paddingVertical: 12,
+  sectionPressed: { backgroundColor: colors.primaryLight },
+  sectionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.control,
+    backgroundColor: colors.primaryLight,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
-  secondaryText: { color: colors.danger, fontWeight: '700' },
-  logout: { marginTop: spacing.md, alignItems: 'center' },
-  logoutText: { color: colors.danger, fontWeight: '600' },
+  sectionText: { flex: 1, marginRight: spacing.sm },
+  sectionTitle: { ...type.body, fontWeight: '600' },
+  sectionSummary: { ...type.secondary, marginTop: 2 },
+  sectionDone: { color: colors.success },
+  sectionBody: {
+    padding: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  firstField: { marginTop: -spacing.md },
+  cardText: { ...type.secondary },
+  cardAction: { marginTop: spacing.md },
+  cardActionNext: { marginTop: spacing.sm },
+  logout: { marginTop: spacing.lg },
 });

@@ -1,41 +1,59 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import api from '../api/client';
+import Button from '../components/Button';
+import ChipRow from '../components/ChipRow';
+import PriceField, { splitRupees, toRupees } from '../components/PriceField';
+import Field from '../components/Field';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { ZoneChipsWrap } from '../components/ZonePicker';
+import ZonePicker from '../components/ZonePicker';
 import {
+  FACING_OPTIONS,
   LISTING_TYPES,
   PROPERTY_STATUSES,
+  PROPERTY_TYPE_LABELS,
   PROPERTY_TYPES,
+  RESIDENCE_STYLES,
+  VILLA_TYPES,
 } from '../constants/config';
-import { colors, spacing } from '../constants/theme';
+// `type` is a state variable in this screen, so the theme text styles are aliased
+import { colors, radius, spacing, type as textStyles } from '../constants/theme';
 import { sharePropertyOnWhatsApp } from '../utils/whatsappShare';
 import { useAuth } from '../context/AuthContext';
 
 export default function PropertyFormScreen({ navigation, route }) {
-  const { mode = 'create', propertyId } = route.params || {};
+  const { mode = 'create', propertyId: initialId } = route.params || {};
   const { user } = useAuth();
+  const [propertyId, setPropertyId] = useState(initialId || null);
   const [zones, setZones] = useState([]);
   const [property, setProperty] = useState(null);
   const [title, setTitle] = useState('');
   const [type, setType] = useState('Apartment');
   const [listingType, setListingType] = useState('Sale');
+  const [residenceStyle, setResidenceStyle] = useState('');
+  const [facing, setFacing] = useState('');
+  const [carpetArea, setCarpetArea] = useState('');
   const [bhk, setBhk] = useState('');
+  const [villaType, setVillaType] = useState('');
+  const [plotSize, setPlotSize] = useState('');
   const [price, setPrice] = useState('');
+  const [priceUnit, setPriceUnit] = useState('Lakhs');
   const [areaSqft, setAreaSqft] = useState('');
   const [zoneId, setZoneId] = useState(null);
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState('Available');
   const [notes, setNotes] = useState('');
+  const [images, setImages] = useState([]);
   const [caption, setCaption] = useState('');
   const [script, setScript] = useState('');
   const [agentPhone, setAgentPhone] = useState('');
@@ -43,16 +61,25 @@ export default function PropertyFormScreen({ navigation, route }) {
 
   const hydrate = (data) => {
     setProperty(data);
+    setPropertyId(data._id);
     setTitle(data.title || '');
     setType(data.type || 'Apartment');
     setListingType(data.listingType || 'Sale');
+    setResidenceStyle(data.residenceStyle || '');
+    setFacing(data.facing || '');
+    setCarpetArea(data.carpetArea != null ? String(data.carpetArea) : '');
     setBhk(data.bhk != null ? String(data.bhk) : '');
-    setPrice(data.price != null ? String(data.price) : '');
+    setVillaType(data.villaType || '');
+    setPlotSize(data.plotSize || '');
+    const savedPrice = splitRupees(data.price);
+    setPrice(savedPrice.amount);
+    setPriceUnit(savedPrice.unit);
     setAreaSqft(data.areaSqft != null ? String(data.areaSqft) : '');
     setZoneId(data.zone?._id || data.zone);
     setAddress(data.address || '');
     setStatus(data.status || 'Available');
     setNotes(data.notes || '');
+    setImages(data.images || []);
     setCaption(data.generatedCaption || '');
     setScript(data.generatedScript || '');
   };
@@ -66,8 +93,8 @@ export default function PropertyFormScreen({ navigation, route }) {
         ]);
         setZones(zonesRes.data);
         setAgentPhone(meRes.data.phone || '');
-        if (mode === 'edit' && propertyId) {
-          const { data } = await api.get(`/api/properties/${propertyId}`);
+        if (mode === 'edit' && initialId) {
+          const { data } = await api.get(`/api/properties/${initialId}`);
           hydrate(data);
         }
       } catch (err) {
@@ -77,33 +104,52 @@ export default function PropertyFormScreen({ navigation, route }) {
         setLoading(false);
       }
     })();
-  }, [mode, propertyId, navigation]);
+  }, [mode, initialId, navigation]);
+
+  const buildPayload = () => ({
+    title: title.trim(),
+    type,
+    listingType,
+    residenceStyle: type === 'Apartment' || type === 'Villa' ? residenceStyle : '',
+    facing: type === 'Apartment' || type === 'Plot' ? facing : '',
+    carpetArea:
+      type === 'Apartment' && carpetArea !== '' ? Number(carpetArea) : null,
+    bhk: type === 'Apartment' && bhk !== '' ? Number(bhk) : null,
+    villaType: type === 'Villa' ? villaType : '',
+    plotSize: type === 'Plot' ? plotSize.trim() : '',
+    price: toRupees(price, priceUnit),
+    areaSqft:
+      (type === 'Commercial' || type === 'Plot' || type === 'Villa') && areaSqft !== ''
+        ? Number(areaSqft)
+        : type === 'Apartment'
+          ? carpetArea !== ''
+            ? Number(carpetArea)
+            : null
+          : areaSqft === ''
+            ? null
+            : Number(areaSqft),
+    zone: zoneId,
+    address,
+    status,
+    notes,
+  });
 
   const onSave = async () => {
-    if (!title.trim() || !price || !zoneId) {
-      Alert.alert('Validation', 'Title, price, and zone are required.');
+    if (!title.trim() || !(toRupees(price, priceUnit) > 0) || !zoneId) {
+      Alert.alert('Validation', 'Title, price, and area (zone) are required.');
       return;
     }
     setLoading(true);
-    const payload = {
-      title: title.trim(),
-      type,
-      listingType,
-      bhk: bhk === '' ? null : Number(bhk),
-      price: Number(price),
-      areaSqft: areaSqft === '' ? null : Number(areaSqft),
-      zone: zoneId,
-      address,
-      status,
-      notes,
-    };
+    const payload = buildPayload();
     try {
-      if (mode === 'edit') {
+      if (propertyId) {
         const { data } = await api.put(`/api/properties/${propertyId}`, payload);
         hydrate(data);
         Alert.alert('Saved', 'Property updated');
       } else {
         const { data } = await api.post('/api/properties', payload);
+        hydrate(data);
+        navigation.setOptions({ title: 'Edit property' });
         navigation.replace('PropertyForm', { mode: 'edit', propertyId: data._id });
       }
     } catch (err) {
@@ -113,8 +159,64 @@ export default function PropertyFormScreen({ navigation, route }) {
     }
   };
 
+  const pickAndUploadImages = async () => {
+    if (!propertyId) {
+      Alert.alert('Save first', 'Save the property before uploading photos.');
+      return;
+    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to upload images.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 8,
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    const form = new FormData();
+    result.assets.forEach((asset, idx) => {
+      form.append('images', {
+        uri: asset.uri,
+        name: asset.fileName || `photo-${Date.now()}-${idx}.jpg`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+    });
+
+    setLoading(true);
+    try {
+      const { data } = await api.post(`/api/properties/${propertyId}/images`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      });
+      hydrate(data);
+    } catch (err) {
+      Alert.alert('Upload failed', err.response?.data?.message || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeImage = async (url) => {
+    if (!propertyId) return;
+    setLoading(true);
+    try {
+      const { data } = await api.delete(`/api/properties/${propertyId}/images`, {
+        data: { url },
+      });
+      hydrate(data);
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Could not remove image');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const pickAndUploadVideo = async () => {
-    if (mode !== 'edit' || !propertyId) {
+    if (!propertyId) {
       Alert.alert('Save first', 'Save the property before uploading a reel clip.');
       return;
     }
@@ -124,7 +226,7 @@ export default function PropertyFormScreen({ navigation, route }) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       quality: 0.8,
     });
     if (result.canceled || !result.assets?.[0]) return;
@@ -144,7 +246,7 @@ export default function PropertyFormScreen({ navigation, route }) {
         timeout: 120000,
       });
       hydrate(data);
-      Alert.alert('Uploaded', 'Video clip attached. Use HTTPS public URL for Instagram.');
+      Alert.alert('Uploaded', 'Video clip attached.');
     } catch (err) {
       Alert.alert('Upload failed', err.response?.data?.message || err.message);
     } finally {
@@ -162,9 +264,8 @@ export default function PropertyFormScreen({ navigation, route }) {
       const { data } = await api.post(`/api/properties/${propertyId}/generate-caption`);
       setCaption(data.caption || '');
       setScript(data.script || '');
-      if (data.property) hydrate(data.property);
     } catch (err) {
-      Alert.alert('LLM error', err.response?.data?.message || err.message);
+      Alert.alert('Error', err.response?.data?.message || 'Caption failed');
     } finally {
       setLoading(false);
     }
@@ -172,43 +273,41 @@ export default function PropertyFormScreen({ navigation, route }) {
 
   const publishReel = async () => {
     if (!propertyId) return;
-    Alert.alert('Publish Reel', 'Post this clip to your connected Instagram account?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Publish',
-        onPress: async () => {
-          setLoading(true);
-          try {
-            const { data } = await api.post(`/api/properties/${propertyId}/publish-reel`, {
-              caption,
-            });
-            if (data.property) hydrate(data.property);
-            Alert.alert('Published', `Reel id: ${data.reelId}`);
-          } catch (err) {
-            Alert.alert('Publish failed', err.response?.data?.message || err.message);
-          } finally {
-            setLoading(false);
-          }
-        },
-      },
-    ]);
+    setLoading(true);
+    try {
+      const { data } = await api.post(`/api/properties/${propertyId}/publish-reel`, {
+        caption,
+      });
+      hydrate(data.property || data);
+      Alert.alert('Published', 'Reel sent to Instagram.');
+    } catch (err) {
+      Alert.alert('Publish failed', err.response?.data?.message || err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onWhatsApp = async () => {
     const snapshot = {
+      ...property,
       title,
       type,
       listingType,
       bhk: bhk === '' ? null : Number(bhk),
-      price: price === '' ? null : Number(price),
+      price: price === '' ? null : toRupees(price, priceUnit),
       address,
       notes,
       zone: zones.find((z) => z._id === zoneId) || property?.zone,
+      images,
     };
     await sharePropertyOnWhatsApp(snapshot, agentPhone);
   };
 
   const onDelete = () => {
+    if (!propertyId) {
+      navigation.goBack();
+      return;
+    }
     Alert.alert('Delete property', 'Remove this listing?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -226,118 +325,225 @@ export default function PropertyFormScreen({ navigation, route }) {
     ]);
   };
 
-  const ChipRow = ({ options, value, onSelect }) => (
-    <View style={styles.chipRow}>
-      {options.map((opt) => (
-        <Pressable
-          key={opt}
-          onPress={() => onSelect(opt)}
-          style={[styles.chip, value === opt && styles.chipActive]}
-        >
-          <Text style={[styles.chipText, value === opt && styles.chipTextActive]}>{opt}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
+  // Tapping the selected chip again clears it
+  const toggleOf = (current, setValue) => (opt) => setValue(current === opt ? '' : opt);
 
   return (
     <View style={styles.container}>
       <LoadingOverlay visible={loading} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Title *</Text>
-        <TextInput style={styles.input} value={title} onChangeText={setTitle} />
+        <Text style={[styles.section, styles.sectionFirst]} accessibilityRole="header">
+          Basics
+        </Text>
+        <Field label="Title *" value={title} onChangeText={setTitle} />
 
-        <Text style={styles.label}>Type</Text>
-        <ChipRow options={PROPERTY_TYPES} value={type} onSelect={setType} />
+        <Text style={styles.label}>Property type</Text>
+        <ChipRow
+          options={PROPERTY_TYPES}
+          value={type}
+          onSelect={setType}
+          labels={PROPERTY_TYPE_LABELS}
+        />
 
         <Text style={styles.label}>Listing</Text>
         <ChipRow options={LISTING_TYPES} value={listingType} onSelect={setListingType} />
 
-        <Text style={styles.label}>BHK</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={bhk}
-          onChangeText={setBhk}
-          placeholder="e.g. 3"
-          placeholderTextColor={colors.textMuted}
+        {(type === 'Apartment' || type === 'Villa') && (
+          <>
+            <Text style={styles.label}>Gated / Independent</Text>
+            <ChipRow
+              options={RESIDENCE_STYLES}
+              value={residenceStyle}
+              onSelect={toggleOf(residenceStyle, setResidenceStyle)}
+            />
+          </>
+        )}
+
+        {type === 'Apartment' && (
+          <>
+            <Text style={styles.section} accessibilityRole="header">
+              Flat details
+            </Text>
+            <Text style={styles.label}>Facing</Text>
+            <ChipRow
+              options={FACING_OPTIONS}
+              value={facing}
+              onSelect={toggleOf(facing, setFacing)}
+            />
+            <Field
+              label="Carpet area (sqft)"
+              keyboardType="number-pad"
+              value={carpetArea}
+              onChangeText={setCarpetArea}
+              placeholder="e.g. 1250"
+            />
+            <Field
+              label="BHK"
+              keyboardType="number-pad"
+              value={bhk}
+              onChangeText={setBhk}
+              placeholder="e.g. 3"
+            />
+          </>
+        )}
+
+        {type === 'Commercial' && (
+          <>
+            <Text style={styles.section} accessibilityRole="header">
+              Commercial details
+            </Text>
+            <Field
+              label="Area (sqft)"
+              keyboardType="number-pad"
+              value={areaSqft}
+              onChangeText={setAreaSqft}
+              placeholder="e.g. 2400"
+            />
+          </>
+        )}
+
+        {type === 'Villa' && (
+          <>
+            <Text style={styles.section} accessibilityRole="header">
+              Villa details
+            </Text>
+            <Text style={styles.label}>Villa type</Text>
+            <ChipRow
+              options={VILLA_TYPES}
+              value={villaType}
+              onSelect={toggleOf(villaType, setVillaType)}
+            />
+            <Field
+              label="Built-up area (sqft)"
+              keyboardType="number-pad"
+              value={areaSqft}
+              onChangeText={setAreaSqft}
+              placeholder="e.g. 3200"
+            />
+          </>
+        )}
+
+        {type === 'Plot' && (
+          <>
+            <Text style={styles.section} accessibilityRole="header">
+              Plot details
+            </Text>
+            <Text style={styles.label}>Facing</Text>
+            <ChipRow
+              options={FACING_OPTIONS}
+              value={facing}
+              onSelect={toggleOf(facing, setFacing)}
+            />
+            <Field
+              label="Size"
+              value={plotSize}
+              onChangeText={setPlotSize}
+              placeholder="e.g. 200 sq yards"
+            />
+            <Field
+              label="Area (sqft)"
+              keyboardType="number-pad"
+              value={areaSqft}
+              onChangeText={setAreaSqft}
+              placeholder="e.g. 1800"
+            />
+          </>
+        )}
+
+        <Text style={styles.section} accessibilityRole="header">
+          Price & location
+        </Text>
+        <PriceField
+          label="Price (₹) *"
+          amount={price}
+          unit={priceUnit}
+          onChangeAmount={setPrice}
+          onChangeUnit={setPriceUnit}
         />
 
-        <Text style={styles.label}>Price (₹) *</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={price}
-          onChangeText={setPrice}
-        />
-
-        <Text style={styles.label}>Area (sqft)</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="number-pad"
-          value={areaSqft}
-          onChangeText={setAreaSqft}
-        />
-
-        <Text style={styles.label}>Zone *</Text>
-        <ZoneChipsWrap
+        <Text style={styles.label}>Zone / Area *</Text>
+        <ZonePicker
           zones={zones}
           selectedIds={zoneId ? [zoneId] : []}
-          onChange={(ids) => setZoneId(ids[ids.length - 1] || null)}
+          onChange={(ids) => setZoneId(ids[0] || null)}
+          multi={false}
+          placeholder="Select area"
         />
+
+        <Field label="Address" value={address} onChangeText={setAddress} />
 
         <Text style={styles.label}>Status</Text>
         <ChipRow options={PROPERTY_STATUSES} value={status} onSelect={setStatus} />
 
-        <Text style={styles.label}>Address</Text>
-        <TextInput style={styles.input} value={address} onChangeText={setAddress} />
+        <Field label="Notes" multiline value={notes} onChangeText={setNotes} />
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.notes]}
-          multiline
-          value={notes}
-          onChangeText={setNotes}
-          textAlignVertical="top"
+        <Text style={styles.section} accessibilityRole="header">
+          Photos
+        </Text>
+        <View style={styles.imageGrid}>
+          {images.map((url) => (
+            <View key={url} style={styles.imageWrap}>
+              <Image source={{ uri: url }} style={styles.thumb} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove photo"
+                hitSlop={10}
+                style={({ pressed }) => [styles.removeImg, pressed && styles.pressed]}
+                onPress={() => removeImage(url)}
+              >
+                <Ionicons name="close" size={18} color={colors.text} />
+              </Pressable>
+            </View>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.addImg, pressed && styles.pressed]}
+            onPress={pickAndUploadImages}
+          >
+            <Ionicons name="camera-outline" size={24} color={colors.primary} />
+            <Text style={styles.addImgText}>+ Add</Text>
+          </Pressable>
+        </View>
+        {!propertyId ? (
+          <Text style={styles.hint}>Save the property first, then add photos.</Text>
+        ) : null}
+
+        <Button
+          title={`${propertyId ? 'Update' : 'Add'} property`}
+          onPress={onSave}
+          style={styles.submit}
         />
 
-        <Pressable style={styles.button} onPress={onSave}>
-          <Text style={styles.buttonText}>{mode === 'edit' ? 'Update' : 'Add'} property</Text>
-        </Pressable>
-
-        {mode === 'edit' && (
+        {propertyId && (
           <>
-            <Text style={styles.section}>Share & publish</Text>
-            <Pressable style={styles.secondaryBtn} onPress={onWhatsApp}>
-              <Text style={styles.secondaryText}>Share on WhatsApp</Text>
-            </Pressable>
-
-            <Pressable style={styles.secondaryBtn} onPress={pickAndUploadVideo}>
-              <Text style={styles.secondaryText}>
-                {property?.videoUrl ? 'Replace reel video clip' : 'Upload reel video clip'}
-              </Text>
-            </Pressable>
+            <Text style={styles.section} accessibilityRole="header">
+              Share & publish
+            </Text>
+            <Button
+              variant="secondary"
+              title="Share on WhatsApp"
+              onPress={onWhatsApp}
+              style={styles.action}
+            />
+            <Button
+              variant="secondary"
+              title={property?.videoUrl ? 'Replace reel video clip' : 'Upload reel video clip'}
+              onPress={pickAndUploadVideo}
+              style={styles.action}
+            />
             {!!property?.videoUrl && (
               <Text style={styles.hint} numberOfLines={2}>
                 Video: {property.videoUrl}
               </Text>
             )}
-
-            <Pressable style={styles.secondaryBtn} onPress={generateCaption}>
-              <Text style={styles.secondaryText}>Generate caption (your OpenAI key)</Text>
-            </Pressable>
-            <Text style={styles.hint}>
-              Uses the OpenAI API key saved on your Profile (your credits).
-            </Text>
-
-            <Text style={styles.label}>Instagram caption</Text>
-            <TextInput
-              style={[styles.input, styles.notes]}
-              multiline
-              value={caption}
-              onChangeText={setCaption}
-              textAlignVertical="top"
+            <Button
+              variant="secondary"
+              title="Generate caption (your OpenAI key)"
+              onPress={generateCaption}
+              style={styles.action}
             />
+
+            <Field label="Instagram caption" multiline value={caption} onChangeText={setCaption} />
             {!!script && (
               <>
                 <Text style={styles.label}>Spoken script</Text>
@@ -345,21 +551,13 @@ export default function PropertyFormScreen({ navigation, route }) {
               </>
             )}
 
-            <Pressable style={styles.button} onPress={publishReel}>
-              <Text style={styles.buttonText}>Publish Reel to Instagram</Text>
-            </Pressable>
-            {!!property?.lastInstagramReelId && (
-              <Text style={styles.hint}>
-                Last reel: {property.lastInstagramReelId}
-                {property.lastInstagramPostedAt
-                  ? ` · ${new Date(property.lastInstagramPostedAt).toLocaleString()}`
-                  : ''}
-              </Text>
-            )}
-
-            <Pressable style={styles.dangerBtn} onPress={onDelete}>
-              <Text style={styles.dangerText}>Delete</Text>
-            </Pressable>
+            <Button
+              variant="secondary"
+              title="Publish Reel to Instagram"
+              onPress={publishReel}
+              style={styles.submit}
+            />
+            <Button variant="danger" title="Delete" onPress={onDelete} style={styles.action} />
             <Text style={styles.footerHint}>
               Agent: {user?.name}. Connect Instagram under Profile before publishing.
             </Text>
@@ -370,78 +568,62 @@ export default function PropertyFormScreen({ navigation, route }) {
   );
 }
 
+const THUMB_SIZE = 88;
+const REMOVE_SIZE = 28;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
-  section: {
-    marginTop: spacing.lg,
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
+  content: { padding: spacing.lg, paddingBottom: 48 },
+  section: { ...textStyles.heading, marginTop: spacing.lg },
+  sectionFirst: { marginTop: 0 },
   label: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: spacing.xs,
     marginTop: spacing.md,
+    marginBottom: 6,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  notes: { minHeight: 90 },
   script: {
-    color: colors.textMuted,
-    lineHeight: 20,
+    ...textStyles.secondary,
     backgroundColor: colors.primaryLight,
     padding: spacing.md,
-    borderRadius: 10,
+    borderRadius: radius.control,
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  imageWrap: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: radius.control,
+    overflow: 'hidden',
+  },
+  thumb: { width: '100%', height: '100%' },
+  removeImg: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: REMOVE_SIZE,
+    height: REMOVE_SIZE,
+    borderRadius: REMOVE_SIZE / 2,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addImg: {
+    minWidth: THUMB_SIZE,
+    minHeight: THUMB_SIZE,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.control,
     borderWidth: 1,
     borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.surface,
-    marginRight: 8,
-    marginBottom: 8,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
-  chipTextActive: { color: '#fff' },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    marginTop: spacing.sm,
-    borderRadius: 10,
-    paddingVertical: 13,
-    alignItems: 'center',
-    backgroundColor: colors.primaryLight,
-  },
-  secondaryText: { color: colors.primaryDark, fontWeight: '700' },
-  dangerBtn: {
-    marginTop: spacing.sm,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: colors.dangerLight,
-  },
-  dangerText: { color: colors.danger, fontWeight: '700' },
-  hint: { marginTop: 6, fontSize: 12, color: colors.textMuted },
-  footerHint: { marginTop: spacing.md, fontSize: 12, color: colors.textMuted },
+  addImgText: { fontSize: 14, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  pressed: { opacity: 0.8 },
+  submit: { marginTop: spacing.lg },
+  action: { marginTop: spacing.sm },
+  hint: { ...textStyles.secondary, marginTop: 6 },
+  footerHint: { ...textStyles.secondary, marginTop: spacing.md },
 });

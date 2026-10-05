@@ -87,6 +87,12 @@ const requirementSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  // Users who marked this lead as read. Not returned unless selected.
+  readBy: {
+    type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    default: [],
+    select: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

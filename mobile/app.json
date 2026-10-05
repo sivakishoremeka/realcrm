@@ -1,24 +1,18 @@
 {
   "expo": {
-    "name": "RealCRM",
+    "name": "Your Bhoomi",
     "slug": "realcrm",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "realcrm",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F766E"
-    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F766E"
       },
       "package": "com.realcrm.app",
-      "usesCleartextTraffic": true,
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
@@ -32,16 +26,30 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Select property reel video clips to publish.",
         "NSCameraUsageDescription": "Capture property reel clips.",
-        "LSApplicationQueriesSchemes": ["whatsapp", "whatsapp-business"]
+        "LSApplicationQueriesSchemes": [
+          "whatsapp",
+          "whatsapp-business"
+        ]
       }
     },
     "plugins": [
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow RealCRM to access videos for Instagram Reels."
+          "photosPermission": "Allow Your Bhoomi to access videos for Instagram Reels."
         }
-      ]
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0F766E",
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ]
   }
 }

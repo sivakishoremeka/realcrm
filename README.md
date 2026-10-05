@@ -1,12 +1,12 @@
 # RealCRM — Real Estate Matching
 
-CRM that **matches buyer requirements to agents** and lets **property owners publish listings**.
+Four-persona real-estate operations app (Management Service persona planned next).
 
-- **Admin** — capture buyer needs, rank agents (ratings + inventory fit), assign / WhatsApp-share
-- **Agent / Dealer** — same lead capture + match/share; inventory, WhatsApp, Instagram Reels; serve assigned leads
-- **Property Owner** — publish Sale / Rent / Lease listings with photos and editable T&Cs
-- **Buyer care** — lead-generator follow-ups + **split commission** (total % × lead-gen share %; rest to serving agent)
-- **Backend:** Node.js + Express + MongoDB + JWT (+ optional Google Sign-In, OpenAI, Meta Graph)
+- **Publisher** (Owner / Agent) — one login; post **as Agent** (inventory) or **as Owner** (T&Cs + publish); leads, match, WhatsApp, Instagram
+- **Customer** — browse available listings, send enquiries
+- **Business Owner** (`admin`) — run matching, publishers directory, buyer CRM
+- **Management Service** — *deferred* (property supervisor / services)
+- **Backend:** Node.js + Express + MongoDB + JWT (+ optional Google Sign-In, OpenAI, Meta Graph, S3)
 - **Frontend:** React Native (Expo) for Android
 
 ```
@@ -16,13 +16,35 @@ realcrm/
 └── docker-compose.yml
 ```
 
-## Roles
+## Personas / roles
 
-| Role | How to get it | App home |
-|------|---------------|----------|
-| **admin** | Register/login with `ADMIN_EMAIL` from `.env` (default `admin@realcrm.app`) | Requirements → match → assign; Agents directory; Buyers |
-| **agent** | Register as **Agent** (default) or Google with Agent selected | Onboarding → Inventory + Leads (created & assigned) + Profile |
-| **owner** | Register as **Property Owner** (or Google with Owner selected) | My Listings + Profile |
+| Persona | Role key | How to get it | App home |
+|---------|----------|---------------|----------|
+| **Business Owner** | `admin` | Register/login with `ADMIN_EMAIL` (default `admin@realcrm.app`) | Match → Publishers → Buyers |
+| **Publisher** | `publisher` | Register as **Publisher** (default) | Onboarding → My Posts (Agent or Owner) + Leads + Profile |
+| **Customer** | `customer` | Register as **Customer** | Browse → Enquiries → Profile |
+| **Management Service** | — | Not in this release | — |
+
+Legacy `agent` / `owner` accounts migrate to `publisher` on login.
+
+### Customer marketplace
+
+1. Register as **Customer**  
+2. **Browse** Available listings (filters: listing type, property type, area)  
+3. Open a listing → **Send enquiry**  
+4. Track status under **My enquiries**  
+
+APIs: `GET /api/marketplace/listings`, `POST /api/marketplace/enquiries`, `GET /api/marketplace/enquiries/mine`.
+
+### Profile photos & agent ratings
+
+- Every user can upload a **profile picture** (`POST /api/auth/avatar`, S3 prefix `avatars/…`). Login/`/api/auth/me` return a **presigned** `profilePic`.
+- Publisher avatars show a **color-coded 5-star ring**: 1★ red → 2★ orange → 3★ amber → 4★ green → 5★ teal (gray when unrated).
+- Who can rate publishers:
+  - **Customer** — after an enquiry, from **My enquiries** (`enquiry` on `POST /api/agents/:id/reviews`)
+  - **Business Owner (admin)** — from agent detail (general rating) or on an assigned lead
+  - **Lead generator (publisher)** — rate the serving agent on a requirement (existing flow)
+- Aggregates live on `AgentProfile.ratingAvg` / `ratingCount` and boost match scores.
 
 ### Lead capture, match + share, split commission
 
@@ -46,7 +68,7 @@ Owners create **their own** listings (not agent inventory). Flow:
 4. Optionally toggle **Listed via agent** + free-text note (informational only — no agent claim workflow yet)
 5. Check **I accept** → **Publish** → status becomes `Available` (drafts stay `Draft`)
 
-Publish rules: ≥1 image, non-empty terms text, and `accepted: true`. Owner APIs are under `/api/listings` (agent Instagram/video paths stay on `/api/properties`). **Listing photos are uploaded to AWS S3** (`listings/{ownerId}/{listingId}/…`); set `S3_BUCKET_NAME`, `AWS_REGION`, `AWS_S3_ACCESS_KEY_ID`, and `AWS_S3_SECRET_ACCESS_KEY` in `backend/.env`. Bucket needs public-read (or CloudFront via `S3_PUBLIC_BASE_URL`) for the `listings/` prefix so the mobile app can display images.
+Publish rules: ≥1 image, non-empty terms text, and `accepted: true`. Owner APIs are under `/api/listings` (agent Instagram/video paths stay on `/api/properties`). **Photos upload to AWS S3** (`listings/…` and `inventory/…`). The API returns **presigned GET URLs** so private buckets (Block Public Access) still render in the app — no public bucket policy required. Set `S3_BUCKET_NAME`, `AWS_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY` (IAM needs `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`).
 
 ## Matching score (MVP)
 
@@ -89,6 +111,8 @@ npm install
 npx expo start --android
 ```
 
+The mobile app uses Expo SDK 57. Use an Expo Go version compatible with SDK 57; if your phone cannot connect to the development server over local Wi-Fi, start it with `npx expo start --tunnel`.
+
 Emulator API URL: `http://10.0.2.2:5000` (Server settings on Login).
 
 ## Smoke test (happy path)
@@ -102,11 +126,15 @@ Emulator API URL: `http://10.0.2.2:5000` (Server settings on Login).
 
 | Method | Path | Role |
 |--------|------|------|
-| POST | `/api/auth/register` `/login` `/google` | Public (`role`: `agent` \| `owner`) |
+| POST | `/api/auth/register` `/login` `/google` | Public (`role`: `publisher` \| `customer`) |
+| GET | `/api/marketplace/listings` | Customer / Publisher / Admin |
+| POST | `/api/marketplace/enquiries` | Customer |
+| GET | `/api/marketplace/enquiries/mine` | Customer |
 | GET/PUT | `/api/agents/me` | Agent |
 | GET | `/api/agents` | Admin |
 | GET | `/api/zones` | Auth |
 | CRUD | `/api/properties` | Agent (own) / Admin |
+| GET | `/api/properties/mine` | Publisher — own agent + owner posts as `{ items, facets, total }`. Query: `q`, `minPrice`, `maxPrice`, and comma-separated `postAs`, `status`, `type`, `listingType`, `bhk`, `zone` |
 | GET | `/api/listings/terms-template` | Owner |
 | GET | `/api/listings/mine` | Owner |
 | POST/PUT/DELETE | `/api/listings` `/api/listings/:id` | Owner |
@@ -114,6 +142,8 @@ Emulator API URL: `http://10.0.2.2:5000` (Server settings on Login).
 | DELETE | `/api/listings/:id/images` | Owner |
 | POST | `/api/listings/:id/publish` | Owner (`accepted: true`) |
 | CRUD | `/api/requirements` | Admin + Agent create; Agent lists created/assigned |
+| GET | `/api/requirements/search` | Admin + Agent — leads as `{ items, facets, total }`. Query: `q` and comma-separated `stage` (New, Matched, Assigned, Closed, Sent), `read` (Read, Unread), `listingType`, `propertyType`, `zone` |
+| POST | `/api/requirements/:id/read` | Admin + Agent (with access) — mark lead as read |
 | GET | `/api/requirements/:id/matches` | Admin + Agent (with access) |
 | POST | `/api/requirements/:id/assign` | Admin + Agent (with access) |
 | GET/POST | `/api/agents/:id/reviews` | Admin + Agent (lead gen rates serving agent) |

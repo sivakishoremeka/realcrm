@@ -17,6 +17,7 @@ const reviewRoutes = require('./routes/reviews');
 const propertyRoutes = require('./routes/properties');
 const listingRoutes = require('./routes/listings');
 const requirementRoutes = require('./routes/requirements');
+const marketplaceRoutes = require('./routes/marketplace');
 const instagramRoutes = require('./routes/instagram');
 const { seedZones } = require('./seed/zones');
 const path = require('path');
@@ -35,7 +36,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get('/', (_req, res) => {
   res.json({
     message: 'RealCRM Real Estate Matching API',
-    version: '2.3.0',
+    version: '2.4.0',
   });
 });
 
@@ -48,6 +49,7 @@ app.use('/api/agents/:id/reviews', reviewRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/requirements', requirementRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/instagram', instagramRoutes);
 
 app.use((err, _req, res, _next) => {

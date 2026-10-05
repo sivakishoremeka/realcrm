@@ -9,6 +9,10 @@ const {
   uploadListingImage,
   deleteObjectByUrl,
   deleteObjectsByUrls,
+  withSignedImages,
+  withSignedImagesMany,
+  imageUrlsEqual,
+  canonicalImageUrl,
 } = require('../services/s3');
 
 const router = express.Router();
@@ -47,7 +51,7 @@ router.get('/mine', requireRole('owner'), async (req, res) => {
     const listings = await populateListing(
       Property.find({ owner: req.user._id }).sort({ createdAt: -1 })
     );
-    res.json(listings);
+    res.json(await withSignedImagesMany(listings));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch listings' });
   }
@@ -61,7 +65,7 @@ router.get('/:id', requireRole('owner', 'admin'), async (req, res) => {
         : { _id: req.params.id, owner: req.user._id };
     const listing = await populateListing(Property.findOne(filter));
     if (!listing) return res.status(404).json({ message: 'Listing not found' });
-    res.json(listing);
+    res.json(await withSignedImages(listing));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch listing' });
   }
@@ -120,7 +124,7 @@ router.post('/', requireRole('owner'), async (req, res) => {
     });
 
     const populated = await populateListing(Property.findById(listing._id));
-    res.status(201).json(populated);
+    res.status(201).json(await withSignedImages(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to create listing' });
   }
@@ -169,7 +173,7 @@ router.put('/:id', requireRole('owner'), async (req, res) => {
 
     await listing.save();
     const populated = await populateListing(Property.findById(listing._id));
-    res.json(populated);
+    res.json(await withSignedImages(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to update listing' });
   }
@@ -196,7 +200,7 @@ router.post(
         });
         const url = await uploadListingImage({
           buffer: file.buffer,
-          contentType: file.mimetype,
+          contentType: file.mimetype || 'image/jpeg',
           key,
         });
         urls.push(url);
@@ -206,7 +210,7 @@ router.post(
       await listing.save();
 
       const populated = await populateListing(Property.findById(listing._id));
-      res.json(populated);
+      res.json(await withSignedImages(populated));
     } catch (err) {
       console.error('Listing image upload failed:', err.message);
       res.status(500).json({ message: err.message || 'Image upload failed' });
@@ -223,20 +227,21 @@ router.delete('/:id/images', requireRole('owner'), async (req, res) => {
     if (!listing) return res.status(404).json({ message: 'Listing not found' });
 
     const before = listing.images || [];
-    listing.images = before.filter((u) => u !== url);
-    const removed = listing.images.length < before.length;
+    const match = before.find((u) => imageUrlsEqual(u, url));
+    listing.images = before.filter((u) => !imageUrlsEqual(u, url));
+    const removed = !!match;
     await listing.save();
 
     if (removed) {
       try {
-        await deleteObjectByUrl(url);
+        await deleteObjectByUrl(canonicalImageUrl(match));
       } catch (err) {
         console.warn('S3 image delete failed:', err.message);
       }
     }
 
     const populated = await populateListing(Property.findById(listing._id));
-    res.json(populated);
+    res.json(await withSignedImages(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to delete image' });
   }
@@ -270,7 +275,7 @@ router.post('/:id/publish', requireRole('owner'), async (req, res) => {
     await listing.save();
 
     const populated = await populateListing(Property.findById(listing._id));
-    res.json(populated);
+    res.json(await withSignedImages(populated));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to publish listing' });
   }

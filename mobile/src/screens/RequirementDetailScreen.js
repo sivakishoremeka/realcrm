@@ -1,25 +1,29 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../api/client';
+import Button from '../components/Button';
+import Card from '../components/Card';
+import ChipRow from '../components/ChipRow';
+import { formatPrice } from '../components/PriceField';
+import Field from '../components/Field';
+import RateAgentCard from '../components/RateAgentCard';
+import RatedAvatar from '../components/RatedAvatar';
 import StatusBadge from '../components/StatusBadge';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useAuth } from '../context/AuthContext';
 import { CARE_INTERACTION_TYPES } from '../constants/config';
-import { colors, spacing } from '../constants/theme';
+import { starsLabel } from '../constants/rating';
+import { colors, radius, spacing, type } from '../constants/theme';
 import { shareLeadRequestOnWhatsApp } from '../utils/whatsappShare';
 
-function starsLabel(avg, count) {
-  if (!count) return 'No ratings yet';
-  return `★ ${Number(avg).toFixed(1)} · ${count} review${count === 1 ? '' : 's'}`;
+function InfoRow({ label, value, strong }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={type.secondary}>{label}</Text>
+      <Text style={[type.body, strong && styles.strong]}>{value}</Text>
+    </View>
+  );
 }
 
 export default function RequirementDetailScreen({ route }) {
@@ -40,16 +44,12 @@ export default function RequirementDetailScreen({ route }) {
   const [careNotes, setCareNotes] = useState('');
   const [nextFollowUpAt, setNextFollowUpAt] = useState('');
 
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState('');
-
   const isAdmin = user?.role === 'admin';
   const uid = String(user?.id || user?._id || '');
   const canEditCommission =
     isAdmin ||
     String(requirement?.createdBy?._id || requirement?.createdBy) === uid ||
     String(requirement?.leadGenerator?._id || requirement?.leadGenerator) === uid;
-  const canMatch = !!requirement; // access already enforced by API
   const servingAgentId =
     requirement?.assignedAgent?._id || requirement?.assignedAgent || null;
 
@@ -79,13 +79,18 @@ export default function RequirementDetailScreen({ route }) {
         setInteractions(intRes.data || []);
       }
 
-      if (canMatch || isAdmin || user?.role === 'agent') {
+      try {
         const matchRes = await api.get(`/api/requirements/${requirementId}/matches`);
         setMatches(matchRes.data.matches || []);
         if (matchRes.data.requirement) {
           setRequirement(matchRes.data.requirement);
           hydrateCommission(matchRes.data.requirement);
         }
+      } catch (matchErr) {
+        if (matchErr.response?.status !== 403) {
+          throw matchErr;
+        }
+        setMatches([]);
       }
     } catch (err) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to load');
@@ -176,25 +181,6 @@ export default function RequirementDetailScreen({ route }) {
     }
   };
 
-  const submitReview = async () => {
-    if (!servingAgentId) return;
-    setBusy(true);
-    try {
-      await api.post(`/api/agents/${servingAgentId}/reviews`, {
-        rating: reviewRating,
-        comment: reviewComment.trim(),
-        requirement: requirementId,
-      });
-      Alert.alert('Thank you', 'Your rating helps the community pick great agents.');
-      setReviewComment('');
-      await load();
-    } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Review failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const markClosed = async () => {
     setBusy(true);
     try {
@@ -222,241 +208,235 @@ export default function RequirementDetailScreen({ route }) {
     );
   }
 
+  const budgetLabel = `${formatPrice(requirement?.budgetMin || 0)}${
+    requirement?.budgetMax != null ? ` – ${formatPrice(requirement.budgetMax)}` : '+'
+  }`;
+
   return (
     <View style={styles.container}>
       <LoadingOverlay visible={loading || busy} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <Text style={styles.name}>{requirement?.customer?.name}</Text>
+        <Card>
+          <View style={styles.titleRow}>
+            <Text style={[type.heading, styles.flex]}>{requirement?.customer?.name}</Text>
             <StatusBadge status={requirement?.status} />
           </View>
-          <Text style={styles.meta}>
-            {requirement?.customer?.phone || 'No phone'} ·{' '}
-            {requirement?.customer?.email || 'No email'}
-          </Text>
-          <Text style={styles.line}>
-            Looking for {requirement?.propertyType} · {requirement?.listingType}
-          </Text>
-          <Text style={styles.line}>
-            BHK {requirement?.bhkMin ?? '—'}–{requirement?.bhkMax ?? '—'}
-          </Text>
-          <Text style={styles.line}>
-            Budget ₹{(requirement?.budgetMin || 0).toLocaleString('en-IN')}
-            {requirement?.budgetMax != null
-              ? ` – ₹${Number(requirement.budgetMax).toLocaleString('en-IN')}`
-              : '+'}
-          </Text>
-          <Text style={styles.zones}>
-            Zones:{' '}
-            {(requirement?.preferredZones || []).map((z) => z.name).join(', ') || 'Any'}
-          </Text>
+          <InfoRow label="Phone" value={requirement?.customer?.phone || 'No phone'} />
+          <InfoRow label="Email" value={requirement?.customer?.email || 'No email'} />
+          <InfoRow
+            label="Looking for"
+            value={`${requirement?.propertyType} · ${requirement?.listingType}`}
+          />
+          <InfoRow
+            label="BHK"
+            value={`${requirement?.bhkMin ?? '—'}–${requirement?.bhkMax ?? '—'}`}
+          />
+          <InfoRow label="Budget" value={budgetLabel} strong />
+          <InfoRow
+            label="Zones"
+            value={(requirement?.preferredZones || []).map((z) => z.name).join(', ') || 'Any'}
+          />
           {requirement?.leadGenerator && (
-            <Text style={styles.assigned}>
-              Lead generator: {requirement.leadGenerator.name}
-            </Text>
+            <InfoRow label="Lead generator" value={requirement.leadGenerator.name} />
           )}
           {requirement?.assignedAgent && (
-            <Text style={styles.assigned}>
-              Serving agent: {requirement.assignedAgent.name} (
-              {requirement.assignedAgent.email})
-            </Text>
+            <InfoRow
+              label="Serving agent"
+              value={`${requirement.assignedAgent.name} (${requirement.assignedAgent.email})`}
+            />
           )}
-          {!!requirement?.notes && <Text style={styles.notes}>{requirement.notes}</Text>}
-        </View>
+          {!!requirement?.notes && <InfoRow label="Notes" value={requirement.notes} />}
+        </Card>
 
         {canEditCommission && (
-          <View style={styles.card}>
-            <Text style={styles.sectionInline}>Commission split</Text>
-            <Text style={styles.hint}>
+          <Card>
+            <Text style={type.heading}>Commission split</Text>
+            <Text style={[type.secondary, styles.hint]}>
               Total brokerage on the deal, then how much goes to the lead generator vs serving
               agent.
             </Text>
-            <View style={styles.row2}>
-              <View style={styles.half}>
-                <Text style={styles.label}>Total %</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="decimal-pad"
-                  value={commissionPercent}
-                  onChangeText={setCommissionPercent}
-                />
-              </View>
-              <View style={styles.half}>
-                <Text style={styles.label}>Lead-gen share %</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="decimal-pad"
-                  value={leadGenSharePercent}
-                  onChangeText={setLeadGenSharePercent}
-                />
-              </View>
+            <View style={styles.fieldRow}>
+              <Field
+                label="Total %"
+                containerStyle={styles.fieldHalf}
+                keyboardType="decimal-pad"
+                value={commissionPercent}
+                onChangeText={setCommissionPercent}
+              />
+              <Field
+                label="Lead-gen share %"
+                containerStyle={styles.fieldHalf}
+                keyboardType="decimal-pad"
+                value={leadGenSharePercent}
+                onChangeText={setLeadGenSharePercent}
+              />
             </View>
-            <Text style={styles.computed}>
+            <Text style={[type.body, styles.strong, styles.computed]}>
               Serving agent share: {servingShare}% of commission
               {Number(commissionPercent) > 0
                 ? ` (${((Number(commissionPercent) * servingShare) / 100).toFixed(2)} pts of deal)`
                 : ''}
             </Text>
-            <Text style={styles.label}>Commission notes</Text>
-            <TextInput
-              style={styles.input}
+            <Field
+              label="Commission notes"
               value={commissionNotes}
               onChangeText={setCommissionNotes}
               placeholder="e.g. Shared intro, site visits by serving agent"
-              placeholderTextColor={colors.textMuted}
             />
-            <Text style={styles.label}>Buyer-happy notes</Text>
-            <TextInput
-              style={[styles.input, styles.multiline]}
+            <Field
+              label="Buyer-happy notes"
               value={buyerHappyNotes}
               onChangeText={setBuyerHappyNotes}
               multiline
               placeholder="What would make this buyer feel cared for?"
-              placeholderTextColor={colors.textMuted}
             />
-            <Pressable style={styles.secondaryBtn} onPress={saveCommission}>
-              <Text style={styles.secondaryBtnText}>Save commission & care notes</Text>
-            </Pressable>
-          </View>
+            <Button
+              title="Save commission & care notes"
+              variant="secondary"
+              onPress={saveCommission}
+              style={styles.action}
+            />
+          </Card>
         )}
 
-        <Text style={styles.section}>Buyer care follow-ups</Text>
-        <View style={styles.card}>
-          <Text style={styles.hint}>
+        <Card>
+          <Text style={type.heading}>Buyer care follow-ups</Text>
+          <Text style={[type.secondary, styles.hint]}>
             Community service mindset — check in, listen, and keep the buyer happy.
           </Text>
-          <Text style={styles.label}>Type</Text>
-          <View style={styles.chipRow}>
-            {CARE_INTERACTION_TYPES.map((t) => (
-              <Pressable
-                key={t}
-                onPress={() => setCareType(t)}
-                style={[styles.chip, careType === t && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, careType === t && styles.chipTextActive]}>
-                  {t}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.multiline]}
+          <Text style={styles.fieldLabel}>Type</Text>
+          <ChipRow options={CARE_INTERACTION_TYPES} value={careType} onSelect={setCareType} />
+          <Field
+            label="Notes"
             value={careNotes}
             onChangeText={setCareNotes}
             multiline
             placeholder="What did you do for the buyer today?"
-            placeholderTextColor={colors.textMuted}
           />
-          <Text style={styles.label}>Next follow-up (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.input}
+          <Field
+            label="Next follow-up (YYYY-MM-DD)"
             value={nextFollowUpAt}
             onChangeText={setNextFollowUpAt}
             placeholder="2026-10-10"
-            placeholderTextColor={colors.textMuted}
           />
-          <Pressable style={styles.primaryBtn} onPress={addCareFollowUp}>
-            <Text style={styles.primaryBtnText}>Log follow-up</Text>
-          </Pressable>
-          {interactions.map((item) => (
-            <View key={item._id} style={styles.activity}>
-              <Text style={styles.activityType}>
+          <Button title="Log follow-up" onPress={addCareFollowUp} style={styles.action} />
+          {interactions.map((item, index) => (
+            <View
+              key={item._id}
+              style={[styles.listRow, styles.divider, index === 0 && styles.action]}
+            >
+              <Text style={[type.body, styles.semibold]}>
                 {item.type} · {item.createdBy?.name || 'You'}
               </Text>
-              <Text style={styles.activityNotes}>{item.notes}</Text>
+              <Text style={[type.secondary, styles.rowLine]}>{item.notes}</Text>
               {item.nextFollowUpAt ? (
-                <Text style={styles.activityMeta}>
+                <Text style={[type.caption, styles.rowLine]}>
                   Next: {String(item.nextFollowUpAt).slice(0, 10)}
                 </Text>
               ) : null}
             </View>
           ))}
-        </View>
+        </Card>
 
-        <Text style={styles.section}>Matched agents</Text>
-        {matches.length === 0 ? (
-          <Text style={styles.empty}>
-            No strong matches yet. Ask agents to complete onboarding and add inventory.
-          </Text>
-        ) : (
-          matches.map((m) => (
-            <View key={m.agent.id} style={styles.matchCard}>
-              <View style={styles.row}>
-                <Text style={styles.matchName}>{m.agent.name}</Text>
-                <Text style={styles.score}>{m.score}</Text>
-              </View>
-              <Text style={styles.agency}>{m.agent.agencyName || 'Independent'}</Text>
-              <Text style={styles.rating}>
-                {starsLabel(m.agent.ratingAvg, m.agent.ratingCount)}
-                {m.agent.yearsExperience
-                  ? ` · ${m.agent.yearsExperience} yrs`
-                  : ''}
-              </Text>
-              <Text style={styles.matchMeta}>
-                {(m.agent.zones || []).map((z) => z.name).join(', ') || 'No zones'}
-              </Text>
-              <Text style={styles.matchMeta}>
-                {m.matchingPropertyCount} matching · {m.inventoryCount} total listings
-              </Text>
-              <View style={styles.reasons}>
-                {(m.reasons || []).map((r) => (
-                  <View key={r} style={styles.reasonChip}>
-                    <Text style={styles.reasonText}>{r}</Text>
+        <Card>
+          <Text style={type.heading}>Matched agents</Text>
+          {matches.length === 0 ? (
+            <Text style={[type.secondary, styles.hint]}>
+              No strong matches yet. Ask agents to complete onboarding and add inventory.
+            </Text>
+          ) : (
+            matches.map((m, index) => (
+              <View key={m.agent.id} style={[styles.listRow, index > 0 && styles.divider]}>
+                <View style={styles.titleRow}>
+                  <RatedAvatar
+                    uri={m.agent.profilePic}
+                    name={m.agent.name}
+                    ratingAvg={m.agent.ratingAvg}
+                    ratingCount={m.agent.ratingCount}
+                    size={48}
+                  />
+                  <View style={styles.flex}>
+                    <Text style={[type.body, styles.semibold]}>{m.agent.name}</Text>
+                    <Text style={[type.secondary, styles.rowLine]}>
+                      {starsLabel(m.agent.ratingAvg, m.agent.ratingCount)}
+                    </Text>
                   </View>
-                ))}
+                  <Text
+                    style={[type.heading, styles.score]}
+                    accessibilityLabel={`Match score ${m.score}`}
+                  >
+                    {m.score}
+                  </Text>
+                </View>
+                <Text style={[type.secondary, styles.rowLine]}>
+                  {m.agent.agencyName || 'Independent'}
+                  {m.agent.yearsExperience
+                    ? ` · ${m.agent.yearsExperience} yrs`
+                    : ''}
+                </Text>
+                <Text style={[type.secondary, styles.rowLine]}>
+                  {(m.agent.zones || []).map((z) => z.name).join(', ') || 'No zones'}
+                </Text>
+                <Text style={[type.secondary, styles.rowLine]}>
+                  {m.matchingPropertyCount} matching · {m.inventoryCount} total listings
+                </Text>
+                <View style={styles.reasons}>
+                  {(m.reasons || []).map((r) => (
+                    <View key={r} style={styles.reasonChip}>
+                      <Text style={[type.caption, styles.reasonText]}>{r}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Button
+                  title="Assign to serve"
+                  variant="secondary"
+                  onPress={() => assign(m.agent.id, m.agent.name)}
+                  style={styles.stacked}
+                />
+                <Button
+                  title="Share request on WhatsApp"
+                  variant="secondary"
+                  onPress={() => shareLeadRequestOnWhatsApp(requirement, m.agent)}
+                  style={styles.stacked}
+                />
               </View>
-              <Pressable
-                style={styles.assignBtn}
-                onPress={() => assign(m.agent.id, m.agent.name)}
-              >
-                <Text style={styles.assignText}>Assign to serve</Text>
-              </Pressable>
-              <Pressable
-                style={styles.shareBtn}
-                onPress={() => shareLeadRequestOnWhatsApp(requirement, m.agent)}
-              >
-                <Text style={styles.shareText}>Share request on WhatsApp</Text>
-              </Pressable>
-            </View>
-          ))
-        )}
+            ))
+          )}
+        </Card>
 
         {servingAgentId && canEditCommission && (
-          <View style={styles.card}>
-            <Text style={styles.sectionInline}>Rate serving agent</Text>
-            <Text style={styles.hint}>Help the community recognize great buyer care.</Text>
-            <View style={styles.chipRow}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Pressable
-                  key={n}
-                  onPress={() => setReviewRating(n)}
-                  style={[styles.chip, reviewRating === n && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, reviewRating === n && styles.chipTextActive]}>
-                    {n}★
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              value={reviewComment}
-              onChangeText={setReviewComment}
-              multiline
-              placeholder="Optional comment"
-              placeholderTextColor={colors.textMuted}
+          <>
+            <RateAgentCard
+              agentId={servingAgentId}
+              agentName={
+                requirement?.assignedAgent?.name ||
+                matches.find((m) => String(m.agent.id) === String(servingAgentId))?.agent
+                  ?.name
+              }
+              profilePic={
+                requirement?.assignedAgent?.profilePic ||
+                matches.find((m) => String(m.agent.id) === String(servingAgentId))?.agent
+                  ?.profilePic
+              }
+              ratingAvg={
+                matches.find((m) => String(m.agent.id) === String(servingAgentId))?.agent
+                  ?.ratingAvg || 0
+              }
+              ratingCount={
+                matches.find((m) => String(m.agent.id) === String(servingAgentId))?.agent
+                  ?.ratingCount || 0
+              }
+              requirementId={requirementId}
+              title={isAdmin ? 'Business Owner rating' : 'Rate serving agent'}
+              hint="Help the community recognize great buyer care."
+              onSubmitted={() => load()}
             />
-            <Pressable style={styles.secondaryBtn} onPress={submitReview}>
-              <Text style={styles.secondaryBtnText}>Submit rating</Text>
-            </Pressable>
             {requirement?.status !== 'Closed' && (
-              <Pressable style={styles.dangerBtn} onPress={markClosed}>
-                <Text style={styles.dangerText}>Mark lead closed</Text>
-              </Pressable>
+              <Card>
+                <Button title="Mark lead closed" variant="danger" onPress={markClosed} />
+              </Card>
             )}
-          </View>
+          </>
         )}
       </ScrollView>
     </View>
@@ -465,140 +445,40 @@ export default function RequirementDetailScreen({ route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
+  content: { padding: spacing.lg, paddingBottom: spacing.xl },
+  flex: { flex: 1 },
+  strong: { fontWeight: '700' },
+  semibold: { fontWeight: '600' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  infoRow: { marginTop: spacing.sm },
+  hint: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  fieldRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    columnGap: spacing.md,
   },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  row2: { flexDirection: 'row', justifyContent: 'space-between' },
-  half: { width: '48%' },
-  name: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text, marginRight: 8 },
-  meta: { marginTop: 6, color: colors.textMuted },
-  line: { marginTop: 4, color: colors.text },
-  zones: { marginTop: 8, color: colors.primaryDark, fontWeight: '600' },
-  assigned: { marginTop: 8, color: colors.text, fontWeight: '700' },
-  notes: { marginTop: 10, color: colors.textMuted, lineHeight: 20 },
-  section: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  sectionInline: { fontSize: 16, fontWeight: '800', color: colors.text },
-  hint: { marginTop: 4, marginBottom: 8, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
-  label: {
-    fontSize: 13,
+  fieldHalf: { flexGrow: 1, flexBasis: 120 },
+  fieldLabel: {
+    ...type.secondary,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: spacing.xs,
     marginTop: spacing.sm,
+    marginBottom: 6,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: colors.text,
-    backgroundColor: colors.background,
-  },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-  computed: { marginTop: 8, color: colors.primaryDark, fontWeight: '700' },
-  empty: { color: colors.textMuted, lineHeight: 20, marginBottom: spacing.md },
-  matchCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
-  },
-  matchName: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.text },
-  score: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.primary,
-    minWidth: 36,
-    textAlign: 'right',
-  },
-  agency: { marginTop: 4, color: colors.primaryDark, fontWeight: '600' },
-  rating: { marginTop: 2, color: colors.text, fontWeight: '600', fontSize: 13 },
-  matchMeta: { marginTop: 2, color: colors.textMuted, fontSize: 13 },
-  reasons: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
+  computed: { marginTop: spacing.sm },
+  action: { marginTop: spacing.md },
+  stacked: { marginTop: spacing.sm },
+  listRow: { paddingVertical: spacing.md },
+  divider: { borderTopWidth: 1, borderTopColor: colors.border },
+  rowLine: { marginTop: spacing.xs },
+  score: { color: colors.primary, minWidth: 36, textAlign: 'right' },
+  reasons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm },
   reasonChip: {
     backgroundColor: colors.primaryLight,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 6,
-    marginBottom: 6,
+    paddingVertical: spacing.xs,
   },
-  reasonText: { color: colors.primaryDark, fontSize: 11, fontWeight: '600' },
-  assignBtn: {
-    marginTop: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  assignText: { color: '#fff', fontWeight: '700' },
-  shareBtn: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  shareText: { color: colors.text, fontWeight: '700' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.background,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  chipActive: { borderColor: colors.primary, backgroundColor: colors.primary + '22' },
-  chipText: { fontWeight: '600', color: colors.textMuted, fontSize: 12 },
-  chipTextActive: { color: colors.primary },
-  primaryBtn: {
-    marginTop: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '700' },
-  secondaryBtn: {
-    marginTop: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: colors.text, fontWeight: '700' },
-  dangerBtn: { marginTop: spacing.md, paddingVertical: 10, alignItems: 'center' },
-  dangerText: { color: '#EF4444', fontWeight: '700' },
-  activity: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  activityType: { fontWeight: '700', color: colors.text },
-  activityNotes: { marginTop: 4, color: colors.textMuted },
-  activityMeta: { marginTop: 2, fontSize: 12, color: colors.primaryDark },
+  reasonText: { color: colors.primary },
 });

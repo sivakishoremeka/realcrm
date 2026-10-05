@@ -11,10 +11,26 @@ const agentReviewSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  // Unique per author+agent+context (admin | req:<id> | enq:<id>)
+  contextKey: {
+    type: String,
+    required: true,
+  },
   requirement: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Requirement',
     default: null,
+  },
+  enquiry: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Enquiry',
+    default: null,
+  },
+  // admin | customer | leadgen
+  source: {
+    type: String,
+    enum: ['admin', 'customer', 'leadgen'],
+    default: 'leadgen',
   },
   rating: {
     type: Number,
@@ -33,9 +49,7 @@ const agentReviewSchema = new mongoose.Schema({
   },
 });
 
-agentReviewSchema.index(
-  { author: 1, agent: 1, requirement: 1 },
-  { unique: true, sparse: true }
-);
+agentReviewSchema.index({ author: 1, agent: 1, contextKey: 1 }, { unique: true });
+agentReviewSchema.index({ agent: 1, createdAt: -1 });
 
 module.exports = mongoose.model('AgentReview', agentReviewSchema);
