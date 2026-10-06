@@ -120,7 +120,7 @@ router.get('/callback', async (req, res) => {
       `<html><body style="font-family:sans-serif;padding:24px">
         <h2>Instagram connected</h2>
         <p>Connected as <b>@${ig.instagramUsername || ig.instagramUserId}</b>.</p>
-        <p>You can close this window and return to RealCRM.</p>
+        <p>You can close this window and return to Your Bhoomi.</p>
       </body></html>`
     );
   } catch (err) {

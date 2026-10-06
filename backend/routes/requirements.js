@@ -76,7 +76,7 @@ router.get('/', requireRole('admin', 'agent'), async (req, res) => {
     const requirements = await populateRequirement(
       Requirement.find(listFilter(req.user)).sort({ createdAt: -1 })
     );
-    res.json(requirements);
+    res.json(await Promise.all(requirements.map((r) => withSignedAssignee(r))));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch requirements' });
   }
@@ -106,15 +106,20 @@ router.get('/search', requireRole('admin', 'agent'), async (req, res) => {
       if (!lastFollowUp.has(key)) lastFollowUp.set(key, { type, notes, date });
     });
 
-    const tagged = leads.map(({ readBy = [], ...lead }) => ({
-      ...lead,
-      stage: leadStage(lead, userId),
-      // Leads you created yourself are never "unread".
-      isRead:
-        String(lead.createdBy?._id || lead.createdBy) === userId ||
-        readBy.some((id) => String(id) === userId),
-      lastFollowUp: lastFollowUp.get(String(lead._id)) || null,
-    }));
+    const tagged = await Promise.all(
+      leads.map(async ({ readBy = [], ...lead }) => {
+        const signed = await withSignedAssignee(lead);
+        return {
+          ...signed,
+          stage: leadStage(lead, userId),
+          // Leads you created yourself are never "unread".
+          isRead:
+            String(lead.createdBy?._id || lead.createdBy) === userId ||
+            readBy.some((id) => String(id) === userId),
+          lastFollowUp: lastFollowUp.get(String(lead._id)) || null,
+        };
+      })
+    );
     res.json(searchLeads(tagged, req.query));
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch leads' });

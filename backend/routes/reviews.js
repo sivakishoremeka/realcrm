@@ -4,9 +4,9 @@ const AgentReview = require('../models/AgentReview');
 const AgentProfile = require('../models/AgentProfile');
 const Requirement = require('../models/Requirement');
 const Enquiry = require('../models/Enquiry');
-const Property = require('../models/Property');
 const auth = require('../middleware/auth');
 const { requireRole, normalizeRole } = require('../middleware/roles');
+const { signStoredImageUrl } = require('../services/s3');
 
 const router = express.Router({ mergeParams: true });
 
@@ -160,6 +160,18 @@ async function resolveReviewContext(user, agentId, { requirementId, enquiryId } 
   };
 }
 
+async function withSignedAuthorPics(reviews) {
+  return Promise.all(
+    (reviews || []).map(async (r) => {
+      const obj = typeof r.toObject === 'function' ? r.toObject() : { ...r };
+      if (obj.author?.profilePic) {
+        obj.author.profilePic = await signStoredImageUrl(obj.author.profilePic);
+      }
+      return obj;
+    })
+  );
+}
+
 router.get(
   '/',
   requireRole('admin', 'agent', 'publisher', 'customer', 'owner'),
@@ -172,7 +184,7 @@ router.get(
         .populate('enquiry', 'status message')
         .sort({ createdAt: -1 })
         .limit(50);
-      res.json(reviews);
+      res.json(await withSignedAuthorPics(reviews));
     } catch (err) {
       res.status(500).json({ message: err.message || 'Failed to fetch reviews' });
     }
@@ -223,8 +235,9 @@ router.post(
         .populate('enquiry', 'status message');
 
       const aggregates = await recomputeAgentRating(review.agent);
+      const [signedReview] = await withSignedAuthorPics([review]);
 
-      res.status(201).json({ review, ...aggregates });
+      res.status(200).json({ review: signedReview, ...aggregates });
     } catch (err) {
       if (err.code === 11000) {
         return res

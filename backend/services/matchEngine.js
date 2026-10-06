@@ -125,10 +125,6 @@ async function matchAgentsForRequirement(requirement, { limit = 20 } = {}) {
     score = Math.min(100, score);
     if (score <= 0) continue;
 
-    const profilePic = profile.user.profilePic
-      ? await signStoredImageUrl(profile.user.profilePic)
-      : '';
-
     results.push({
       agent: {
         id: profile.user._id,
@@ -137,7 +133,7 @@ async function matchAgentsForRequirement(requirement, { limit = 20 } = {}) {
         phone: profile.phone,
         agencyName: profile.agencyName,
         yearsExperience: profile.yearsExperience,
-        profilePic,
+        profilePicRaw: profile.user.profilePic || '',
         ratingAvg,
         ratingCount,
         zones: profile.zones,
@@ -155,7 +151,16 @@ async function matchAgentsForRequirement(requirement, { limit = 20 } = {}) {
       (b.agent.ratingAvg || 0) - (a.agent.ratingAvg || 0) ||
       b.matchingPropertyCount - a.matchingPropertyCount
   );
-  return results.slice(0, limit);
+
+  const top = results.slice(0, limit);
+  await Promise.all(
+    top.map(async (row) => {
+      const raw = row.agent.profilePicRaw;
+      row.agent.profilePic = raw ? await signStoredImageUrl(raw) : '';
+      delete row.agent.profilePicRaw;
+    })
+  );
+  return top;
 }
 
 module.exports = { matchAgentsForRequirement };

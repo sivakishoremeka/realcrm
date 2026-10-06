@@ -1,5 +1,6 @@
 const express = require('express');
 const AgentProfile = require('../models/AgentProfile');
+const AgentReview = require('../models/AgentReview');
 const Property = require('../models/Property');
 const ServiceZone = require('../models/ServiceZone');
 const User = require('../models/User');
@@ -239,20 +240,28 @@ router.get('/:id', requireRole('admin'), async (req, res) => {
       .populate('zone', 'name city')
       .sort({ createdAt: -1 })
       .limit(50);
-    const AgentReview = require('../models/AgentReview');
     const reviews = await AgentReview.find({ agent: profile.user._id })
-      .populate('author', 'name email')
+      .populate('author', 'name email profilePic')
       .sort({ createdAt: -1 })
       .limit(20);
     const obj = profile.toObject();
     if (obj.user?.profilePic) {
       obj.user.profilePic = await signStoredImageUrl(obj.user.profilePic);
     }
+    const signedReviews = await Promise.all(
+      reviews.map(async (r) => {
+        const ro = r.toObject();
+        if (ro.author?.profilePic) {
+          ro.author.profilePic = await signStoredImageUrl(ro.author.profilePic);
+        }
+        return ro;
+      })
+    );
     res.json({
       ...obj,
       inventoryCount,
       properties: await withSignedImagesMany(properties),
-      reviews,
+      reviews: signedReviews,
     });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to load agent' });
